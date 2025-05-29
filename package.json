@@ -1,0 +1,62 @@
+{
+  "name": "three-sdf-loader",
+  "version": "0.2.0",
+  "description": "Lightweight loader to convert SDF (V2000) molecular files into THREE.Group for Three.js visualisation.",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": "./src/index.js",
+  "types": "./types/index.d.ts",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "src",
+    "types"
+  ],
+  "keywords": [
+    "three",
+    "sdf",
+    "loader",
+    "molecule",
+    "3d"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run --coverage",
+    "lint": "eslint . --ext .js",
+    "format": "prettier --write .",
+    "size": "size-limit",
+    "prepublishOnly": "npm run lint && npm test && npm run size"
+  },
+  "size-limit": [
+    {
+      "path": "src/index.js",
+      "limit": "150 KB"
+    }
+  ],
+  "dependencies": {
+    "sdf-parser": "^2.0.0",
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "@size-limit/preset-small-lib": "^8.2.4",
+    "@vitest/coverage-v8": "^1.6.1",
+    "eslint": "^8.56.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-import": "^2.29.1",
+    "prettier": "^3.2.5",
+    "size-limit": "^8.2.4",
+    "vitest": "^1.5.0"
+  },
+  "vitest": {
+    "coverage": {
+      "provider": "c8",
+      "all": true,
+      "lines": 95,
+      "functions": 95,
+      "branches": 95,
+      "statements": 95
+    }
+  }
+}
