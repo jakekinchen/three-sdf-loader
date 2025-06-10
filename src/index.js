@@ -137,19 +137,19 @@ function simpleParse(text) {
   const atoms = [];
   for (let i = 0; i < natoms; i += 1) {
     const l = lines[4 + i] || '';
-    const x = parseFloat(l.slice(0, 10));
-    const y = parseFloat(l.slice(10, 20));
-    const z = parseFloat(l.slice(20, 30));
-    const symbol = l.slice(31, 34).trim();
+    const parts = l.trim().split(/\s+/);
+    const x = parseFloat(parts[0]);
+    const y = parseFloat(parts[1]);
+    const z = parseFloat(parts[2]);
+    const symbol = parts[3] ?? '';
     atoms.push({ x, y, z, symbol });
   }
 
   const bonds = [];
   for (let i = 0; i < nbonds; i += 1) {
     const l = lines[4 + natoms + i] || '';
-    const a = Number(l.slice(0, 3));
-    const b = Number(l.slice(3, 6));
-    bonds.push({ beginAtomIdx: a, endAtomIdx: b });
+    const [a, b] = l.trim().split(/\s+/);
+    bonds.push({ beginAtomIdx: Number(a), endAtomIdx: Number(b) });
   }
 
   const props = {};
