@@ -95,6 +95,23 @@ export function loadSDF(text, options = {}) {
     const verts = [];
     const up = new THREE.Vector3(0, 1, 0);
 
+    /* ── Compute best-effort plane normal for (mostly) planar molecules ── */
+    const planeNormal = (() => {
+      if (atoms.length < 3) return up.clone();
+      const pts = atoms.map((a) => new THREE.Vector3(a.x, a.y, a.z));
+      for (let i = 0; i < pts.length - 2; i += 1) {
+        for (let j = i + 1; j < pts.length - 1; j += 1) {
+          for (let k = j + 1; k < pts.length; k += 1) {
+            const v1 = new THREE.Vector3().subVectors(pts[j], pts[i]);
+            const v2 = new THREE.Vector3().subVectors(pts[k], pts[i]);
+            const n = new THREE.Vector3().crossVectors(v1, v2);
+            if (n.lengthSq() > 1e-6) return n.normalize();
+          }
+        }
+      }
+      return up.clone();
+    })();
+
     bonds.forEach((bond) => {
       const a = atomPositions[bond.beginAtomIdx - 1];
       const b = atomPositions[bond.endAtomIdx - 1];
@@ -109,16 +126,22 @@ export function loadSDF(text, options = {}) {
       if (!renderMultipleBonds || order === 1) {
         addSegment(new THREE.Vector3(0, 0, 0));
       } else {
-        // Determine a stable side vector perpendicular to the bond direction.
-        // 1. Try cross with world-up (0,1,0). If bond is parallel to Y we'll get near-zero.
-        // 2. Otherwise fall back to Z, then X axis.
+        // Offset lies in molecular plane: n × dir  (n = plane normal)
         const dir = new THREE.Vector3().subVectors(b, a).normalize();
-        const tryAxes = [up, new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0)];
-        const side = new THREE.Vector3();
-        for (let i = 0; i < tryAxes.length; i += 1) {
-          side.crossVectors(dir, tryAxes[i]);
-          if (side.lengthSq() > 1e-6) break; // found a good axis
+        let side = new THREE.Vector3().crossVectors(planeNormal, dir);
+
+        // Fallback to previous axis logic if side is too small (bond // planeNormal)
+        if (side.lengthSq() < 1e-6) {
+          const tryAxes = [up, new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0)];
+          for (let i = 0; i < tryAxes.length; i += 1) {
+            const alt = new THREE.Vector3().crossVectors(dir, tryAxes[i]);
+            if (alt.lengthSq() > 1e-6) {
+              side = alt;
+              break;
+            }
+          }
         }
+
         side.normalize().multiplyScalar(multipleBondOffset);
 
         if (order === 2) {

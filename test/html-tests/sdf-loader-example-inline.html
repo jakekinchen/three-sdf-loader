@@ -24,7 +24,7 @@
     </style>
   </head>
   <body>
-    <h1 id="mol-title">Caffeine (C8H10N4O2)</h1>
+    <h1 id="mol-title">Chlorophosphazene (P9N9Cl6)</h1>
     <!-- Map the bare specifier 'three' to the CDN URL so sub-modules resolve correctly -->
     <script type="importmap">
       {
@@ -41,7 +41,7 @@
         import { CSS2DRenderer,
                  CSS2DObject }        from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/renderers/CSS2DRenderer.js';
         import { RGBELoader }         from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/loaders/RGBELoader.js';
-        import { loadSDF }            from 'https://unpkg.com/three-sdf-loader@latest/src/index.js';
+        import { loadSDF }            from '../../../src/index.js';
       
         /* ── Scene / Camera / Renderer ───────────────────────────────────────────── */
         const scene   = new THREE.Scene();
@@ -142,10 +142,36 @@
         addLights();
         addEnvironment();
       
-        /* ── Load SDF text ──────────────────────────────────────────────────────── */
-        const sdfData = await fetch(
-          'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/caffeine/SDF?record_type=3d',
-        ).then(r => r.text());
+        /* ── Inline SDF data ────────────────────────────────────────────────────── */
+        const sdfData = `  220225
+  -OEChem-06102512403D
+
+ 12 12  0     0  0  0  0  0  0999 V2000
+    1.4254   -3.0346    1.0900 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+    0.9078   -1.9290   -1.7782 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+    1.9148    2.7523    1.0899 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+    1.2188    1.7491   -1.7782 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+   -2.1257    0.1796   -1.7784 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+   -3.3406    0.2823    1.0904 Cl  0  0  0  0  0  0  0  0  0  0  0  0
+    0.6704   -1.4263    0.1501 P   0  0  0  0  0  0  0  0  0  0  0  0
+    0.9003    1.2937    0.1502 P   0  0  0  0  0  0  0  0  0  0  0  0
+   -1.5706    0.1328    0.1496 P   0  0  0  0  0  0  0  0  0  0  0  0
+    1.5277   -0.1291    0.5393 N   0  0  0  0  0  0  0  0  0  0  0  0
+   -0.8758   -1.2586    0.5378 N   0  0  0  0  0  0  0  0  0  0  0  0
+   -0.6523    1.3879    0.5374 N   0  0  0  0  0  0  0  0  0  0  0  0
+  1  7  1  0  0  0  0
+  2  7  1  0  0  0  0
+  3  8  1  0  0  0  0
+  4  8  1  0  0  0  0
+  5  9  1  0  0  0  0
+  6  9  1  0  0  0  0
+  7 10  2  0  0  0  0
+  7 11  1  0  0  0  0
+  8 10  1  0  0  0  0
+  8 12  2  0  0  0  0
+  9 11  2  0  0  0  0
+  9 12  1  0  0  0  0
+M  END`;
       
         /* ── Load molecule ─────────────────────────────────────────────────────── */
         const mol = loadSDF(sdfData);
@@ -169,12 +195,10 @@
         scene.add(molGroup);
       
         /* Extract symbols once, then create labels */
-        const atomSymbols = [];
-        mol.traverse((o) => {
-          if (o.isMesh && o.userData?.atom?.symbol) {
-            atomSymbols.push(o.userData.atom.symbol);
-          }
-        });
+        const atomSymbols = sdfData
+          .split('\n')
+          .slice(3, 15)              // 12 atom lines
+          .map(l => l.trim().split(/\s+/)[3] ?? '');
         addAtomLabels(mol, atomSymbols);
       
         /* ── Animation loop ─────────────────────────────────────────────────────── */
