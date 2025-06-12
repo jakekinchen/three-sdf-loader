@@ -51,6 +51,8 @@ export function loadSDF(text, options = {}) {
     elementRadii = {},
     attachAtomData = true,
     attachProperties = true,
+    renderMultipleBonds = true,
+    multipleBondOffset = 0.1,
   } = options;
 
   // Trim anything after first $$$$
@@ -90,24 +92,51 @@ export function loadSDF(text, options = {}) {
 
   // Build bonds using LineSegments (lighter than cylinders)
   if (bonds.length) {
-    const positions = new Float32Array(bonds.length * 2 * 3);
-    let ptr = 0;
+    const verts = [];
+    const up = new THREE.Vector3(0, 1, 0);
+
     bonds.forEach((bond) => {
-      // SDF indices are 1-based
       const a = atomPositions[bond.beginAtomIdx - 1];
       const b = atomPositions[bond.endAtomIdx - 1];
       if (!a || !b) return;
-      positions.set(a.toArray(), ptr);
-      ptr += 3;
-      positions.set(b.toArray(), ptr);
-      ptr += 3;
+
+      const order = bond.order || 1;
+      const addSegment = (offsetVec) => {
+        verts.push(a.x + offsetVec.x, a.y + offsetVec.y, a.z + offsetVec.z);
+        verts.push(b.x + offsetVec.x, b.y + offsetVec.y, b.z + offsetVec.z);
+      };
+
+      if (!renderMultipleBonds || order === 1) {
+        addSegment(new THREE.Vector3(0, 0, 0));
+      } else {
+        // Build side vector perpendicular to bond dir and up. Fallback to cross with X axis.
+        const dir = new THREE.Vector3().subVectors(b, a);
+        let side = new THREE.Vector3().crossVectors(dir, up);
+        if (side.lengthSq() < 1e-6) {
+          side = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(1, 0, 0));
+        }
+        side.normalize().multiplyScalar(multipleBondOffset);
+
+        if (order === 2) {
+          addSegment(side);
+          addSegment(side.clone().negate());
+        } else {
+          // triple bond: centre + two offsets
+          addSegment(new THREE.Vector3(0, 0, 0));
+          addSegment(side);
+          addSegment(side.clone().negate());
+        }
+      }
     });
 
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const mat = new THREE.LineBasicMaterial({ color: 0xaaaaaa });
-    const lines = new THREE.LineSegments(geom, mat);
-    group.add(lines);
+    if (verts.length) {
+      const positions = new Float32Array(verts);
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const mat = new THREE.LineBasicMaterial({ color: 0xaaaaaa });
+      const lines = new THREE.LineSegments(geom, mat);
+      group.add(lines);
+    }
   }
 
   if (attachProperties) {
@@ -148,8 +177,8 @@ function simpleParse(text) {
   const bonds = [];
   for (let i = 0; i < nbonds; i += 1) {
     const l = lines[4 + natoms + i] || '';
-    const [a, b] = l.trim().split(/\s+/);
-    bonds.push({ beginAtomIdx: Number(a), endAtomIdx: Number(b) });
+    const [a, b, orderStr] = l.trim().split(/\s+/);
+    bonds.push({ beginAtomIdx: Number(a), endAtomIdx: Number(b), order: Number(orderStr) || 1 });
   }
 
   const props = {};

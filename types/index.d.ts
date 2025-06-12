@@ -11,6 +11,10 @@ export interface LoadSDFOptions {
   attachAtomData?: boolean;
   /** Attach molecule properties to Group.userData when true (default: true) */
   attachProperties?: boolean;
+  /** Render double/triple bonds as parallel lines when true (default: true) */
+  renderMultipleBonds?: boolean;
+  /** Distance between parallel lines for multiple bonds (scene units, default: 0.1) */
+  multipleBondOffset?: number;
 }
 
 export interface AtomRecord {

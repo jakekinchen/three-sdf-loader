@@ -54,4 +54,20 @@ describe('loadSDF', () => {
     expect(sphere.userData.atom).toBeUndefined();
     expect(group.userData.properties).toBeUndefined();
   });
+
+  it('renders duplicate segments for double bonds', () => {
+    const ETHENE_SDF = `ethene
+      Demo
+
+      2  1  0  0  0  0              0 V2000
+        0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+        1.3300    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+      1  2  2  0
+    M  END`;
+
+    const g = loadSDF(ETHENE_SDF, { renderMultipleBonds: true });
+    const line = g.children.find((c) => c.type === 'LineSegments');
+    const vertCount = line.geometry.getAttribute('position').count;
+    expect(vertCount).toBe(4); // two segments → 4 vertices
+  });
 }); 

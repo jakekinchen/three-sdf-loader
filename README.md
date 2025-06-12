@@ -12,7 +12,7 @@
 npm install three three-sdf-loader
 ```
 
-> **Peer-dep**: Three.js (r160+) must be installed alongside.
+> **Peer-dep**: Three.js (r151+) must be installed alongside.
 
 ## Quick usage
 
@@ -34,31 +34,61 @@ scene.add(molecule);
 | `elementRadii`  | `Record<string, number>`               | preset  | Per-element sphere radii (in scene units).                      |
 | `attachAtomData`| `boolean`                              | `true`  | Copy each atom record onto corresponding `mesh.userData.atom`.  |
 | `attachProperties`| `boolean`                            | `true`  | Copy molecule-level `properties` onto `group.userData`.         |
+| `renderMultipleBonds`| `boolean`                         | `true`  | Render double / triple bonds as parallel lines.                 |
+| `multipleBondOffset`| `number`                           | `0.1`   | Separation between parallel lines (scene units).                |
 
 ## Example (browser)
 
-Open `examples/webgl_loader_sdf.html` or view the live version:
-<https://your-demo-link.example.com>
+Below is a zero-build browser snippet (ES modules + CDN). It uses the
+`loadSDF` **named export** and maps dependencies with an import-map so that
+sub-modules resolve correctly.
 
-## CLI / CI
+```html
+<!-- index.html -->
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.151.3/build/three.module.js",
+      "sdf-parser": "https://cdn.jsdelivr.net/npm/sdf-parser@2.0.0/+esm"
+    }
+  }
+</script>
 
-```bash
-npm run lint   # ESLint (airbnb-base) + Prettier
-npm test       # Vitest with 100 % coverage
-npm run size   # size-limit ≤ 3 KB gzipped
-```
+<script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/controls/OrbitControls.js';
+  import { loadSDF } from 'https://unpkg.com/three-sdf-loader@0.2.1/src/index.js';
 
-## License
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 100);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  document.body.appendChild(renderer.domElement);
 
-MIT © 2025 Your Name 
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
 
-## Advanced parsing only
+  const sdfText = await (await fetch('https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/caffeine/SDF?record_type=3d')).text();
+  const mol = loadSDF(sdfText);
+  scene.add(mol);
+</script>
 
-Need raw data without any Three.js visuals? Use `parseSDF()` – a thin wrapper around [sdf-parser](https://www.npmjs.com/package/sdf-parser):
+### Lighting tips
+
+After loading, swap the default `MeshBasicMaterial` for `MeshStandardMaterial` to
+get PBR shading, then add a HemisphereLight + DirectionalLights:
 
 ```js
-import { parseSDF } from 'three-sdf-loader';
+mol.traverse((o) => {
+  if (o.isMesh) o.material = new THREE.MeshStandardMaterial({
+    color: o.material.color,
+    metalness: 0.1,
+    roughness: 0.8,
+  });
+});
+```
 
-const { atoms, bonds, properties } = parseSDF(await fetch('molecule.sdf').then(r => r.text()));
-console.log(properties.PUBCHEM_COMPOUND_CID);
-``` 
+Make sure to enable `renderer.physicallyCorrectLights = true` and set
+`renderer.outputEncoding = THREE.sRGBEncoding`.
+
+---
