@@ -2,7 +2,7 @@
 
 > Convert `.sdf` (V2000) molecular files into ready-to-render `THREE.Group` objects. Zero patches to Three.js — only public APIs.
 
-![Demo GIF](https://raw.githubusercontent.com/ajchem/three-sdf-loader-assets/main/demo.gif)
+![Demo Image](https://raw.githubusercontent.com/jakekinchen/three-sdf-loader/main/screenshot.png)
 
 ---
 
