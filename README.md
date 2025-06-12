@@ -57,7 +57,7 @@ sub-modules resolve correctly.
 <script type="module">
   import * as THREE from 'three';
   import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/controls/OrbitControls.js';
-  import { loadSDF } from 'https://unpkg.com/three-sdf-loader@0.2.1/src/index.js';
+  import { loadSDF } from 'https://unpkg.com/three-sdf-loader@latest/src/index.js';
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 100);

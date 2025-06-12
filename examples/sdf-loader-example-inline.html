@@ -29,8 +29,7 @@
     <script type="importmap">
       {
         "imports": {
-          "three": "https://cdn.jsdelivr.net/npm/three@0.151.3/build/three.module.js",
-          "sdf-parser": "https://cdn.jsdelivr.net/npm/sdf-parser@2.0.0/+esm"
+          "three": "https://cdn.jsdelivr.net/npm/three@0.151.3/build/three.module.js"
         }
       }
     </script>
@@ -41,7 +40,7 @@
         import { CSS2DRenderer,
                  CSS2DObject }        from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/renderers/CSS2DRenderer.js';
         import { RGBELoader }         from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/loaders/RGBELoader.js';
-        import { loadSDF }            from 'https://unpkg.com/three-sdf-loader@0.2.1/src/index.js';
+        import { loadSDF }            from 'https://unpkg.com/three-sdf-loader@latest/src/index.js';
       
         /* ── Scene / Camera / Renderer ───────────────────────────────────────────── */
         const scene   = new THREE.Scene();

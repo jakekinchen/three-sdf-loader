@@ -109,11 +109,15 @@ export function loadSDF(text, options = {}) {
       if (!renderMultipleBonds || order === 1) {
         addSegment(new THREE.Vector3(0, 0, 0));
       } else {
-        // Build side vector perpendicular to bond dir and up. Fallback to cross with X axis.
-        const dir = new THREE.Vector3().subVectors(b, a);
-        let side = new THREE.Vector3().crossVectors(dir, up);
-        if (side.lengthSq() < 1e-6) {
-          side = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(1, 0, 0));
+        // Determine a stable side vector perpendicular to the bond direction.
+        // 1. Try cross with world-up (0,1,0). If bond is parallel to Y we'll get near-zero.
+        // 2. Otherwise fall back to Z, then X axis.
+        const dir = new THREE.Vector3().subVectors(b, a).normalize();
+        const tryAxes = [up, new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 0, 0)];
+        const side = new THREE.Vector3();
+        for (let i = 0; i < tryAxes.length; i += 1) {
+          side.crossVectors(dir, tryAxes[i]);
+          if (side.lengthSq() > 1e-6) break; // found a good axis
         }
         side.normalize().multiplyScalar(multipleBondOffset);
 
