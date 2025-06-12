@@ -15,6 +15,10 @@ export interface LoadSDFOptions {
   renderMultipleBonds?: boolean;
   /** Distance between parallel lines for multiple bonds (scene units, default: 0.1) */
   multipleBondOffset?: number;
+  /** Render bonds as cylinders instead of line segments (default: true) */
+  useCylinders?: boolean;
+  /** Radius of cylinder bonds when useCylinders=true (scene units, default: 0.06) */
+  bondRadius?: number;
 }
 
 export interface AtomRecord {

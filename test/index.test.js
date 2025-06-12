@@ -30,7 +30,7 @@ describe('loadSDF', () => {
   });
 
   it('includes hydrogens when showHydrogen=true', () => {
-    const group = loadSDF(WATER_SDF, { showHydrogen: true });
+    const group = loadSDF(WATER_SDF, { showHydrogen: true, useCylinders: false });
     const spheres = group.children.filter((c) => c.type === 'Mesh');
     expect(spheres.length).toBe(3);
     const hasLines = group.children.some((c) => c.type === 'LineSegments');
@@ -38,7 +38,7 @@ describe('loadSDF', () => {
   });
 
   it('attaches atom data and properties by default', () => {
-    const group = loadSDF(WATER_SDF, { showHydrogen: true });
+    const group = loadSDF(WATER_SDF, { showHydrogen: true, useCylinders: false });
     expect(group.userData).toHaveProperty('properties');
     const sphere = group.children.find((c) => c.type === 'Mesh');
     expect(sphere.userData).toHaveProperty('atom');
@@ -49,6 +49,7 @@ describe('loadSDF', () => {
       attachAtomData: false,
       attachProperties: false,
       showHydrogen: true,
+      useCylinders: false,
     });
     const sphere = group.children.find((c) => c.type === 'Mesh');
     expect(sphere.userData.atom).toBeUndefined();
@@ -65,9 +66,21 @@ describe('loadSDF', () => {
       1  2  2  0
     M  END`;
 
-    const g = loadSDF(ETHENE_SDF, { renderMultipleBonds: true });
+    const g = loadSDF(ETHENE_SDF, { renderMultipleBonds: true, useCylinders: false });
     const line = g.children.find((c) => c.type === 'LineSegments');
     const vertCount = line.geometry.getAttribute('position').count;
     expect(vertCount).toBe(4); // two segments → 4 vertices
+  });
+
+  it('creates cylinder meshes when useCylinders=true', () => {
+    const g = loadSDF(WATER_SDF, { showHydrogen: true, useCylinders: true });
+    const hasCylinder = g.children.some((c) => c.isMesh && c.geometry?.type === 'CylinderGeometry');
+    expect(hasCylinder).toBe(true);
+  });
+
+  it('creates line segments when useCylinders=false', () => {
+    const g = loadSDF(WATER_SDF, { showHydrogen: true, useCylinders: false });
+    const hasLine = g.children.some((c) => c.type === 'LineSegments');
+    expect(hasLine).toBe(true);
   });
 }); 

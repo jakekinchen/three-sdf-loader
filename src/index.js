@@ -53,6 +53,8 @@ export function loadSDF(text, options = {}) {
     attachProperties = true,
     renderMultipleBonds = true,
     multipleBondOffset = 0.1,
+    useCylinders = true,
+    bondRadius = 0.02,
   } = options;
 
   // Trim anything after first $$$$
@@ -95,6 +97,10 @@ export function loadSDF(text, options = {}) {
     const verts = [];
     const up = new THREE.Vector3(0, 1, 0);
 
+    // Shared resources for cylinder mode
+    const cylGeo = useCylinders ? new THREE.CylinderGeometry(1, 1, 1, 8) : null;
+    const cylMat = useCylinders ? new THREE.MeshBasicMaterial({ color: 0xaaaaaa }) : null;
+
     /* ── Compute best-effort plane normal for (mostly) planar molecules ── */
     const planeNormal = (() => {
       if (atoms.length < 3) return up.clone();
@@ -118,13 +124,33 @@ export function loadSDF(text, options = {}) {
       if (!a || !b) return;
 
       const order = bond.order || 1;
-      const addSegment = (offsetVec) => {
-        verts.push(a.x + offsetVec.x, a.y + offsetVec.y, a.z + offsetVec.z);
-        verts.push(b.x + offsetVec.x, b.y + offsetVec.y, b.z + offsetVec.z);
+      const addBond = (offsetVec) => {
+        const aOff = new THREE.Vector3().addVectors(a, offsetVec);
+        const bOff = new THREE.Vector3().addVectors(b, offsetVec);
+
+        if (useCylinders) {
+          // Cylinder mesh between aOff and bOff
+          const dirVec = new THREE.Vector3().subVectors(bOff, aOff);
+          const len = dirVec.length();
+          if (len < 1e-6) return;
+
+          const mid = new THREE.Vector3().addVectors(aOff, bOff).multiplyScalar(0.5);
+          const mesh = new THREE.Mesh(cylGeo, cylMat);
+          // scale: radius in X/Z, length in Y
+          mesh.scale.set(bondRadius * 2, len, bondRadius * 2);
+          // orient: Y axis → dir
+          mesh.quaternion.setFromUnitVectors(up, dirVec.clone().normalize());
+          mesh.position.copy(mid);
+          group.add(mesh);
+        } else {
+          // line mode: push vertices
+          verts.push(aOff.x, aOff.y, aOff.z);
+          verts.push(bOff.x, bOff.y, bOff.z);
+        }
       };
 
       if (!renderMultipleBonds || order === 1) {
-        addSegment(new THREE.Vector3(0, 0, 0));
+        addBond(new THREE.Vector3(0, 0, 0));
       } else {
         // Offset lies in molecular plane: n × dir  (n = plane normal)
         const dir = new THREE.Vector3().subVectors(b, a).normalize();
@@ -145,18 +171,18 @@ export function loadSDF(text, options = {}) {
         side.normalize().multiplyScalar(multipleBondOffset);
 
         if (order === 2) {
-          addSegment(side);
-          addSegment(side.clone().negate());
+          addBond(side);
+          addBond(side.clone().negate());
         } else {
           // triple bond: centre + two offsets
-          addSegment(new THREE.Vector3(0, 0, 0));
-          addSegment(side);
-          addSegment(side.clone().negate());
+          addBond(new THREE.Vector3(0, 0, 0));
+          addBond(side);
+          addBond(side.clone().negate());
         }
       }
     });
 
-    if (verts.length) {
+    if (!useCylinders && verts.length) {
       const positions = new Float32Array(verts);
       const geom = new THREE.BufferGeometry();
       geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
