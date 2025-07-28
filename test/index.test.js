@@ -83,4 +83,40 @@ describe('loadSDF', () => {
     const hasLine = g.children.some((c) => c.type === 'LineSegments');
     expect(hasLine).toBe(true);
   });
+
+  it('infers metal–ligand coordination bonds by default', () => {
+    const SIMPLE_FE_C = `fe-c
+      Example
+
+      2  0  0  0  0  0              0 V2000
+        0.0000    0.0000    0.0000 Fe  0  0  0  0  0  0  0  0  0  0  0  0
+        1.9000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    M  END
+    $$$$`;
+
+    const g = loadSDF(SIMPLE_FE_C, { useCylinders: false });
+    const line = g.children.find((c) => c.type === 'LineSegments');
+    expect(line).toBeDefined();
+  });
+
+  it('respects relFactor for cutoff scaling', () => {
+    const FLAT_FE_C2 = `fe-c2
+      Example
+
+      2  0  0  0  0  0              0 V2000
+        0.0000    0.0000    0.0000 Fe  0  0  0  0  0  0  0  0  0  0  0  0
+        4.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0
+    M  END
+    $$$$`;
+
+    // With default relFactor (1.4) a bond should be inferred (threshold 5.6)
+    const gDefault = loadSDF(FLAT_FE_C2, { useCylinders: false });
+    const hasDefault = gDefault.children.some((c) => c.type === 'LineSegments');
+    expect(hasDefault).toBe(true);
+
+    // Lowering relFactor below 1 should remove the bond (threshold falls to 3)
+    const gLow = loadSDF(FLAT_FE_C2, { useCylinders: false, relFactor: 0.5 });
+    const hasLow = gLow.children.some((c) => c.type === 'LineSegments');
+    expect(hasLow).toBe(false);
+  });
 }); 

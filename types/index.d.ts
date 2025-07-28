@@ -17,8 +17,17 @@ export interface LoadSDFOptions {
   multipleBondOffset?: number;
   /** Render bonds as cylinders instead of line segments (default: true) */
   useCylinders?: boolean;
-  /** Radius of cylinder bonds when useCylinders=true (scene units, default: 0.06) */
+  /** Radius of cylinder bonds when useCylinders=true (scene units, default: 0.02) */
   bondRadius?: number;
+  /** Automatically infer coordination (order 0) bonds for common metals (default: true) */
+  autoDetectMetalBonds?: boolean;
+  /** Multiplier applied to closest metal–ligand distance for adaptive cutoff (default: 1.4) */
+  relFactor?: number;
+  /** Automatically infer three-center bonds (e.g., B–H–B bridges) when true (default: true) */
+  inferBridgingBonds?: boolean;
+  addThreeCenterBonds?: boolean; // deprecated, use inferBridgingBonds
+  /** Array of element symbols to hide from rendering (e.g., ['Cl', 'O']) */
+  hiddenElements?: string[];
 }
 
 export interface AtomRecord {
@@ -47,4 +56,7 @@ export function loadSDF(text: string, options?: LoadSDFOptions): THREE.Group;
 /**
  * Thin wrapper around `sdf-parser` returning a parsed molecule record.
  */
-export function parseSDF(text: string, options?: Record<string, unknown>): MoleculeRecord; 
+export function parseSDF(
+  text: string,
+  options?: Record<string, unknown>,
+): MoleculeRecord;
