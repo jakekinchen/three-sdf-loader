@@ -1,10 +1,7 @@
 /* eslint-disable prefer-destructuring, no-use-before-define */
 
 import * as THREE from 'three';
-import pkgParser from 'sdf-parser';
-
-const parseSDFInternal =
-  typeof pkgParser === 'function' ? pkgParser : pkgParser.parse;
+import { parse as parseSDFInternal } from 'sdf-parser';
 
 // ─── shared geometry caches ────────────────────────────────────────────────
 const SPHERE_GEO_CACHE = new Map(); // key: radius → SphereGeometry
@@ -193,7 +190,7 @@ export function loadSDF(text, options = {}) {
   if (!showHydrogen) hiddenSet.add('H'); // retain legacy flag
 
   // sdf-parser may return array or single object – normalise
-  let mol = parseSDFInternal ? parseSDFInternal(mainText) : null;
+  let mol = parseSDFInternal(mainText);
   if (!mol || !mol.atoms || mol.atoms.length === 0) {
     mol = simpleParse(mainText);
   }

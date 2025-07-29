@@ -1,7 +1,7 @@
 'use strict';
 
 var THREE = require('three');
-var pkgParser = require('sdf-parser');
+var sdfParser = require('sdf-parser');
 
 function _interopNamespaceDefault(e) {
   var n = Object.create(null);
@@ -24,9 +24,6 @@ var THREE__namespace = /*#__PURE__*/_interopNamespaceDefault(THREE);
 
 /* eslint-disable prefer-destructuring, no-use-before-define */
 
-
-const parseSDFInternal =
-  typeof pkgParser === 'function' ? pkgParser : pkgParser.parse;
 
 // ─── shared geometry caches ────────────────────────────────────────────────
 const SPHERE_GEO_CACHE = new Map(); // key: radius → SphereGeometry
@@ -215,7 +212,7 @@ function loadSDF(text, options = {}) {
   if (!showHydrogen) hiddenSet.add('H'); // retain legacy flag
 
   // sdf-parser may return array or single object – normalise
-  let mol = parseSDFInternal ? parseSDFInternal(mainText) : null;
+  let mol = sdfParser.parse(mainText);
   if (!mol || !mol.atoms || mol.atoms.length === 0) {
     mol = simpleParse(mainText);
   }
@@ -430,8 +427,8 @@ function loadSDF(text, options = {}) {
 
 function parseSDF(text, options = {}) {
   if (/^\s*M\s+V30\b/m.test(text)) return parseV3000(text);
-  if (parseSDFInternal) {
-    const result = parseSDFInternal(text, options);
+  if (sdfParser.parse) {
+    const result = sdfParser.parse(text, options);
     if (
       result &&
       (result.atoms || (Array.isArray(result) && result[0]?.atoms))
