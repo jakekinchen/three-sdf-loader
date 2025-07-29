@@ -29,19 +29,21 @@
     <script type="importmap">
       {
         "imports": {
-          "three": "https://cdn.jsdelivr.net/npm/three@0.151.3/build/three.module.js",
-          "sdf-parser": "https://cdn.jsdelivr.net/npm/sdf-parser@2.0.0/+esm"
+          "three": "https://unpkg.com/three@0.156.1/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.156.1/examples/jsm/",
+          "sdf-parser": "https://cdn.jsdelivr.net/npm/sdf-parser@7.0.4/+esm",
+          "three-sdf-loader": "https://unpkg.com/three-sdf-loader@0.3.8/dist/index.js"
         }
       }
     </script>
     <script type="module">
         /* ── Imports ─────────────────────────────────────────────────────────────── */
         import * as THREE from 'three';
-        import { OrbitControls }      from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/controls/OrbitControls.js';
+        import { OrbitControls }      from 'three/addons/controls/OrbitControls.js';
         import { CSS2DRenderer,
-                 CSS2DObject }        from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/renderers/CSS2DRenderer.js';
-        import { RGBELoader }         from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/loaders/RGBELoader.js';
-        import { loadSDF }            from 'https://unpkg.com/three-sdf-loader@latest/src/index.js';
+                 CSS2DObject }        from 'three/addons/renderers/CSS2DRenderer.js';
+        import { RGBELoader }         from 'three/addons/loaders/RGBELoader.js';
+        import { loadSDF }            from 'three-sdf-loader';
       
         /* ── Scene / Camera / Renderer ───────────────────────────────────────────── */
         const scene   = new THREE.Scene();

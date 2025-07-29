@@ -1,16 +1,29 @@
 {
   "name": "three-sdf-loader",
-  "version": "0.3.5",
+  "version": "0.3.8",
   "description": "Lightweight loader to convert SDF (V2000) molecular files into THREE.Group for Three.js visualisation.",
   "type": "module",
-  "main": "./src/index.js",
-  "exports": "./src/index.js",
-  "types": "./types/index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "unpkg": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "peerDependencies": {
+    "three": "^0.156.0",
+    "sdf-parser": "^7.0.0"
+  },
   "engines": {
     "node": ">=20"
   },
   "files": [
     "src",
+    "dist",
     "types",
     "screenshot.png"
   ],
@@ -27,7 +40,9 @@
     "lint": "eslint . --ext .js",
     "format": "prettier --write .",
     "size": "size-limit",
-    "prepublishOnly": "npm run lint && npm test && npm run size"
+    "build": "rollup -c",
+    "postbuild": "cp types/index.d.ts dist",
+    "prepublishOnly": "npm run lint && npm test && npm run size && npm run build"
   },
   "size-limit": [
     {
@@ -35,20 +50,25 @@
       "limit": "150 KB"
     }
   ],
-  "dependencies": {
-    "sdf-parser": "^2.0.0",
-    "three": "^0.160.0"
-  },
+  "dependencies": {},
   "devDependencies": {
+    "@babel/core": "^7.28.0",
+    "@babel/preset-env": "^7.28.0",
+    "@rollup/plugin-commonjs": "^28.0.6",
+    "@rollup/plugin-node-resolve": "^16.0.1",
     "@size-limit/preset-small-lib": "^8.2.4",
     "@vitest/coverage-v8": "^1.6.1",
+    "babel-loader": "^10.0.0",
     "eslint": "^8.56.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-import": "^2.29.1",
     "prettier": "^3.2.5",
+    "rollup": "^4.46.1",
     "size-limit": "^8.2.4",
-    "vitest": "^1.5.0"
+    "vitest": "^1.5.0",
+    "webpack": "^5.101.0",
+    "webpack-cli": "^6.0.1"
   },
   "vitest": {
     "coverage": {

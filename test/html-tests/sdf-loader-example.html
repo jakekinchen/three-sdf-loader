@@ -43,7 +43,7 @@
         CSS2DObject,
       } from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/renderers/CSS2DRenderer.js';
       import { RGBELoader } from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/loaders/RGBELoader.js';
-      import { loadSDF, createPlanarView } from '../../src/index.js';
+      import { loadSDF } from '../../src/index.js';
 
       /* ── Scene / Camera / Renderer ───────────────────────────────────────────── */
       const scene = new THREE.Scene();
@@ -91,6 +91,17 @@
         const dir2 = new THREE.DirectionalLight(0xffffff, 0.8);
         dir2.position.set(-5, -3, -2);
         scene.add(dir2);
+      }
+
+      /* createPlanarView shim */
+      function createPlanarView(cam, bbox) {
+        const { x, y } = bbox.getSize(new THREE.Vector3());
+        const maxDim = Math.max(x, y) * 0.6;
+        cam = new THREE.OrthographicCamera(
+          -maxDim, maxDim, maxDim, -maxDim, 0.1, 1000,
+        );
+        cam.position.set(0, 0, 10);
+        return cam;
       }
 
       function addEnvironment() {
