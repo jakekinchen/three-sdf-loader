@@ -21,8 +21,26 @@ import { loadSDF, parseSDF } from 'three-sdf-loader';
 import * as THREE from 'three';
 
 const text = await fetch('caffeine.sdf').then((r) => r.text());
+
+// Auto-detects 2-D vs 3-D layout (see next section)
 const molecule = loadSDF(text, { showHydrogen: false });
+
+// Example: switch to orthographic camera for purely planar files
+if (molecule.userData.layoutMode === '2d') {
+  camera = new THREE.OrthographicCamera(
+    innerWidth / -2,
+    innerWidth / 2,
+    innerHeight / 2,
+    innerHeight / -2,
+    0.1,
+    1000,
+  );
+  camera.position.set(0, 0, 10);
+}
+
 scene.add(molecule);
+
+// … render loop …
 ```
 
 ### Options
@@ -34,9 +52,21 @@ scene.add(molecule);
 | `elementRadii`        | `Record<string, number>`         | preset  | Per-element sphere radii (in scene units).                     |
 | `attachAtomData`      | `boolean`                        | `true`  | Copy each atom record onto corresponding `mesh.userData.atom`. |
 | `attachProperties`    | `boolean`                        | `true`  | Copy molecule-level `properties` onto `group.userData`.        |
+| `layout`              | `'auto' \| '2d' \| '3d'`         | `auto`  | Force 2‑D or 3‑D handling; `'auto'` infers from Z‑coordinates. |
 | `renderMultipleBonds` | `boolean`                        | `true`  | Render double / triple bonds as parallel lines.                |
 | `multipleBondOffset`  | `number`                         | `0.1`   | Separation between parallel lines (scene units).               |
 | `addThreeCenterBonds` | `boolean`                        | `true`  | Infer three-center bonds (e.g., B–H–B bridges in diborane).    |
+
+## 2-D vs 3-D layout detection
+
+`three-sdf-loader` now tags every returned `THREE.Group` with `group.userData.layoutMode`:
+
+```js
+const group = loadSDF(text);      // ← auto-detects layout
+console.log(group.userData.layoutMode); // '2d' or '3d'
+```
+
+When the layout is `'2d'`, the loader skips coordination-bond inference to avoid false positives and lets your app decide how to frame the molecule (e.g., swap to an orthographic camera). However, if any metal atoms have zero explicit bonds, coordination inference will still run to fix common cases like ferrocene. You can override detection with `layout: '2d' | '3d'` if needed.
 
 ## Example (browser)
 

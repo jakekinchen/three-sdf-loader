@@ -1,8 +1,7 @@
-/* eslint-disable import/extensions */
-
+import fs from 'fs';
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { loadSDF } from '../src/index.js';
+import { loadSDF } from '../src/index';
 
 // Minimal water molecule in SDF (V2000)
 const WATER_SDF = `water
@@ -94,7 +93,7 @@ describe('loadSDF', () => {
     M  END
     $$$$`;
 
-    const g = loadSDF(SIMPLE_FE_C, { useCylinders: false });
+    const g = loadSDF(SIMPLE_FE_C, { useCylinders: false, layout: '3d' });
     const line = g.children.find((c) => c.type === 'LineSegments');
     expect(line).toBeDefined();
   });
@@ -110,13 +109,19 @@ describe('loadSDF', () => {
     $$$$`;
 
     // With default relFactor (1.4) a bond should be inferred (threshold 5.6)
-    const gDefault = loadSDF(FLAT_FE_C2, { useCylinders: false });
+    const gDefault = loadSDF(FLAT_FE_C2, { useCylinders: false, layout: '3d' });
     const hasDefault = gDefault.children.some((c) => c.type === 'LineSegments');
     expect(hasDefault).toBe(true);
 
     // Lowering relFactor below 1 should remove the bond (threshold falls to 3)
-    const gLow = loadSDF(FLAT_FE_C2, { useCylinders: false, relFactor: 0.5 });
+    const gLow = loadSDF(FLAT_FE_C2, { useCylinders: false, relFactor: 0.5, layout: '3d' });
     const hasLow = gLow.children.some((c) => c.type === 'LineSegments');
     expect(hasLow).toBe(false);
+  });
+
+  it('should parse molecule properties', () => {
+    const sdfText = fs.readFileSync('test/bigcoords.sdf', 'utf8');
+    const group = loadSDF(sdfText, { showHydrogen: false });
+    expect(group.children.length).toBe(3); // 2x Boron, 1x Bond
   });
 }); 

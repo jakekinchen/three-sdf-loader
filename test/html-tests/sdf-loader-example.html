@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -35,156 +35,170 @@
       }
     </script>
     <script type="module">
-        /* ── Imports ─────────────────────────────────────────────────────────────── */
-        import * as THREE from 'three';
-        import { OrbitControls }      from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/controls/OrbitControls.js';
-        import { CSS2DRenderer,
-                 CSS2DObject }        from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/renderers/CSS2DRenderer.js';
-        import { RGBELoader }         from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/loaders/RGBELoader.js';
-        import { loadSDF }            from '../../src/index.js';
-      
-        /* ── Scene / Camera / Renderer ───────────────────────────────────────────── */
-        const scene   = new THREE.Scene();
-        const camera  = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 100);
-        camera.position.set(9, 3, 3);
-      
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(innerWidth, innerHeight);
-        renderer.outputEncoding         = THREE.sRGBEncoding;
-        renderer.toneMapping            = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure    = 1.1;
-        renderer.physicallyCorrectLights = true;
-        document.body.appendChild(renderer.domElement);
-      
-        /* ── 2 D label renderer ──────────────────────────────────────────────────── */
-        const labelRenderer = new CSS2DRenderer();
-        labelRenderer.setSize(innerWidth, innerHeight);
-        Object.assign(labelRenderer.domElement.style, {
-          position: 'absolute',
-          top:      0,
-          pointerEvents: 'none'
+      /* ── Imports ─────────────────────────────────────────────────────────────── */
+      import * as THREE from 'three';
+      import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/controls/OrbitControls.js';
+      import {
+        CSS2DRenderer,
+        CSS2DObject,
+      } from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/renderers/CSS2DRenderer.js';
+      import { RGBELoader } from 'https://cdn.jsdelivr.net/npm/three@0.151.3/examples/jsm/loaders/RGBELoader.js';
+      import { loadSDF, createPlanarView } from '../../src/index.js';
+
+      /* ── Scene / Camera / Renderer ───────────────────────────────────────────── */
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(
+        60,
+        innerWidth / innerHeight,
+        0.1,
+        100,
+      );
+      camera.position.set(9, 3, 3);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.1;
+      renderer.physicallyCorrectLights = true;
+      document.body.appendChild(renderer.domElement);
+
+      /* ── 2 D label renderer ──────────────────────────────────────────────────── */
+      const labelRenderer = new CSS2DRenderer();
+      labelRenderer.setSize(innerWidth, innerHeight);
+      Object.assign(labelRenderer.domElement.style, {
+        position: 'absolute',
+        top: 0,
+        pointerEvents: 'none',
+      });
+      document.body.appendChild(labelRenderer.domElement);
+
+      /* ── Controls ───────────────────────────────────────────────────────────── */
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      /* ── Helpers ─────────────────────────────────────────────────────────────── */
+      function addLights() {
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+        const hemi = new THREE.HemisphereLight(0xffffff, 0x080820, 0.7);
+        scene.add(hemi);
+
+        const dir1 = new THREE.DirectionalLight(0xffffff, 1.2);
+        dir1.position.set(5, 5, 5);
+        scene.add(dir1);
+
+        const dir2 = new THREE.DirectionalLight(0xffffff, 0.8);
+        dir2.position.set(-5, -3, -2);
+        scene.add(dir2);
+      }
+
+      function addEnvironment() {
+        new RGBELoader().load(
+          'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@master/hdri/venice_sunset_1k.hdr',
+          (hdr) => {
+            const pmrem = new THREE.PMREMGenerator(renderer);
+            const envMap = pmrem.fromEquirectangular(hdr).texture;
+            scene.environment = envMap;
+            hdr.dispose();
+            pmrem.dispose();
+          },
+        );
+      }
+
+      function addAtomLabels(group, symbols) {
+        let atomIndex = 0;
+
+        group.traverse((obj) => {
+          if (!obj.isMesh) return;
+
+          // Only label atom spheres – skip bonds/cylinders
+          const geoType = obj.geometry?.type;
+          if (geoType !== 'SphereGeometry' && geoType !== 'IcosahedronGeometry')
+            return;
+
+          const symbol = symbols[atomIndex++] ?? '';
+          if (!symbol) return;
+
+          const div = document.createElement('div');
+          div.className = 'atom-label';
+          div.textContent = symbol;
+          // pick black or white for best contrast against atom colour
+          const { r, g, b } = obj.material.color;
+          const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b; // relative luminance
+          const txtColor = lum > 0.45 ? '#000' : '#fff';
+
+          div.style.color = txtColor;
+          div.style.fontSize = '12px';
+          div.style.textShadow = `0 0 4px ${txtColor === '#000' ? '#fff' : '#000'}`;
+
+          const label = new CSS2DObject(div);
+          // Centre the label on the atom (no manual offsets needed)
+          label.position.set(0, 0, 0);
+          obj.add(label);
         });
-        document.body.appendChild(labelRenderer.domElement);
+      }
 
-        /* ── Controls ───────────────────────────────────────────────────────────── */
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-      
-        /* ── Helpers ─────────────────────────────────────────────────────────────── */
-        function addLights() {
-          scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-      
-          const hemi = new THREE.HemisphereLight(0xffffff, 0x080820, 0.7);
-          scene.add(hemi);
-      
-          const dir1 = new THREE.DirectionalLight(0xffffff, 1.2);
-          dir1.position.set(5, 5, 5);
-          scene.add(dir1);
-      
-          const dir2 = new THREE.DirectionalLight(0xffffff, 0.8);
-          dir2.position.set(-5, -3, -2);
-          scene.add(dir2);
-        }
-      
-        function addEnvironment() {
-          new RGBELoader().load(
-            'https://cdn.jsdelivr.net/gh/pmndrs/drei-assets@master/hdri/venice_sunset_1k.hdr',
-            (hdr) => {
-              const pmrem    = new THREE.PMREMGenerator(renderer);
-              const envMap   = pmrem.fromEquirectangular(hdr).texture;
-              scene.environment = envMap;
-              hdr.dispose(); pmrem.dispose();
-            }
-          );
-        }
-      
-        function addAtomLabels(group, symbols) {
-          let atomIndex = 0;
+      function onResize() {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+        labelRenderer.setSize(innerWidth, innerHeight);
+      }
+      addEventListener('resize', onResize, false);
 
-          group.traverse(obj => {
-            if (!obj.isMesh) return;
+      /* ── Lights & environment ───────────────────────────────────────────────── */
+      addLights();
+      addEnvironment();
 
-            // Only label atom spheres – skip bonds/cylinders
-            const geoType = obj.geometry?.type;
-            if (geoType !== 'SphereGeometry' && geoType !== 'IcosahedronGeometry') return;
+      /* ── Load SDF text ──────────────────────────────────────────────────────── */
+      const sdfData = await fetch(
+        'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/caffeine/SDF?record_type=3d',
+      ).then((r) => r.text());
 
-            const symbol = symbols[atomIndex++] ?? '';
-            if (!symbol) return;
+      /* ── Load molecule ─────────────────────────────────────────────────────── */
+      const mol = loadSDF(sdfData);
 
-            const div = document.createElement('div');
-            div.className = 'atom-label';
-            div.textContent = symbol;
-            // pick black or white for best contrast against atom colour
-            const { r, g, b } = obj.material.color;
-            const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;      // relative luminance
-            const txtColor = lum > 0.45 ? '#000' : '#fff';
-
-            div.style.color = txtColor;
-            div.style.fontSize = '12px';
-            div.style.textShadow = `0 0 4px ${txtColor === '#000' ? '#fff' : '#000'}`;
-
-            const label = new CSS2DObject(div);
-            // Centre the label on the atom (no manual offsets needed)
-            label.position.set(0, 0, 0);
-            obj.add(label);
+      // Upgrade materials for PBR & reflections
+      mol.traverse((obj) => {
+        if (obj.isMesh) {
+          const base =
+            obj.material.color?.clone?.() ?? new THREE.Color(0xffffff);
+          obj.material = new THREE.MeshStandardMaterial({
+            color: base,
+            metalness: 0.3,
+            roughness: 0.25,
+            envMapIntensity: 1.0,
           });
         }
-      
-        function onResize() {
-          camera.aspect = innerWidth / innerHeight;
-          camera.updateProjectionMatrix();
-          renderer.setSize(innerWidth, innerHeight);
-          labelRenderer.setSize(innerWidth, innerHeight);
+      });
+
+      // Wrap molecule in a parent group so we can rotate it easily
+      const molGroup = new THREE.Group();
+      molGroup.add(mol);
+      scene.add(molGroup);
+
+      // Set up optimal camera position for 2D viewing
+      const bbox = new THREE.Box3().setFromObject(mol);
+      createPlanarView(camera, bbox);
+
+      /* Extract symbols once, then create labels */
+      const atomSymbols = [];
+      mol.traverse((o) => {
+        if (o.isMesh && o.userData?.atom?.symbol) {
+          atomSymbols.push(o.userData.atom.symbol);
         }
-        addEventListener('resize', onResize, false);
-      
-        /* ── Lights & environment ───────────────────────────────────────────────── */
-        addLights();
-        addEnvironment();
-      
-        /* ── Load SDF text ──────────────────────────────────────────────────────── */
-        const sdfData = await fetch(
-          'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/caffeine/SDF?record_type=3d',
-        ).then(r => r.text());
-      
-        /* ── Load molecule ─────────────────────────────────────────────────────── */
-        const mol = loadSDF(sdfData);
-      
-        // Upgrade materials for PBR & reflections
-        mol.traverse((obj) => {
-          if (obj.isMesh) {
-            const base = obj.material.color?.clone?.() ?? new THREE.Color(0xffffff);
-            obj.material = new THREE.MeshStandardMaterial({
-              color: base,
-              metalness: 0.3,
-              roughness: 0.25,
-              envMapIntensity: 1.0
-            });
-          }
-        });
-      
-        // Wrap molecule in a parent group so we can rotate it easily
-        const molGroup = new THREE.Group();
-        molGroup.add(mol);
-        scene.add(molGroup);
-      
-        /* Extract symbols once, then create labels */
-        const atomSymbols = [];
-        mol.traverse((o) => {
-          if (o.isMesh && o.userData?.atom?.symbol) {
-            atomSymbols.push(o.userData.atom.symbol);
-          }
-        });
-        addAtomLabels(mol, atomSymbols);
-      
-        /* ── Animation loop ─────────────────────────────────────────────────────── */
-        (function animate() {
-          requestAnimationFrame(animate);
-          controls.update();
-          molGroup.rotation.y += 0.002; // slow continuous rotation
-          renderer.render(scene, camera);
-          labelRenderer.render(scene, camera);
-        })();
-      </script>
+      });
+      addAtomLabels(mol, atomSymbols);
+
+      /* ── Animation loop ─────────────────────────────────────────────────────── */
+      (function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        molGroup.rotation.y += 0.002; // slow continuous rotation
+        renderer.render(scene, camera);
+        labelRenderer.render(scene, camera);
+      })();
+    </script>
   </body>
-</html> 
+</html>

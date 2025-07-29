@@ -23,6 +23,8 @@ export interface LoadSDFOptions {
   autoDetectMetalBonds?: boolean;
   /** Multiplier applied to closest metal–ligand distance for adaptive cutoff (default: 1.4) */
   relFactor?: number;
+  /** Layout mode: 'auto' | '2d' | '3d' (default: 'auto') */
+  layout?: 'auto' | '2d' | '3d';
   /** Automatically infer three-center bonds (e.g., B–H–B bridges) when true (default: true) */
   inferBridgingBonds?: boolean;
   addThreeCenterBonds?: boolean; // deprecated, use inferBridgingBonds
@@ -60,3 +62,12 @@ export function parseSDF(
   text: string,
   options?: Record<string, unknown>,
 ): MoleculeRecord;
+
+/**
+ * Positions a camera to optimally view a 2D molecular structure
+ */
+export function createPlanarView(
+  camera: THREE.Camera,
+  boundingBox: THREE.Box3,
+  margin?: number,
+): void;

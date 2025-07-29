@@ -171,6 +171,7 @@ const DEFAULT_REL_FACTOR = 1.4;
 export function loadSDF(text, options = {}) {
   const {
     showHydrogen = false,
+    layout = 'auto',
     hiddenElements = [],
     elementColors = {},
     elementRadii = {},
@@ -198,8 +199,23 @@ export function loadSDF(text, options = {}) {
   }
   const { atoms = [], bonds = [] } = mol ?? {};
 
+  // ── Determine 2‑D vs 3‑D layout ──
+  let layoutMode = layout;
+  if (layoutMode === 'auto') {
+    const maxZ = atoms.reduce((m, a) => Math.max(m, Math.abs(a.z)), 0);
+    layoutMode = maxZ < 1e-4 ? '2d' : '3d';
+  }
+
   // ── Automatic metal–ligand bond inference ──
-  if (options.autoDetectMetalBonds !== false) {
+  const metalUnbonded =
+    options.autoDetectMetalBonds !== false &&
+    atoms.some((a, i) => {
+      if (!DEFAULT_METALS.has(a.symbol.toUpperCase())) return false;
+      return bonds.every((b) => b.beginAtomIdx !== i + 1 && b.endAtomIdx !== i + 1);
+    });
+
+  if ((layoutMode === '3d' || metalUnbonded) &&
+      options.autoDetectMetalBonds !== false) {
     inferCoordinationBonds(atoms, bonds, options);
   }
 
@@ -211,6 +227,7 @@ export function loadSDF(text, options = {}) {
     addInferredBridgingBonds(atoms, bonds, hiddenSet);
   }
   const group = new THREE.Group();
+  group.userData.layoutMode = layoutMode;
 
   // Find atoms involved in stereo bonds
   const stereoAtomIndices = new Set();
