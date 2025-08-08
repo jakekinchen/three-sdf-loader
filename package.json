@@ -36,13 +36,14 @@
   ],
   "license": "MIT",
   "scripts": {
-    "test": "vitest run --coverage",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "lint": "eslint . --ext .js",
     "format": "prettier --write .",
     "size": "size-limit",
     "build": "rollup -c",
     "postbuild": "cp types/index.d.ts dist",
-    "prepublishOnly": "npm run lint && npm test && npm run size && npm run build"
+    "prepublishOnly": "npm run lint && npm run test:coverage && npm run size && npm run build"
   },
   "size-limit": [
     {
