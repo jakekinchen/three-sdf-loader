@@ -124,3 +124,58 @@ Make sure to enable `renderer.physicallyCorrectLights = true` and set
 `renderer.outputEncoding = THREE.sRGBEncoding`.
 
 ---
+
+### Picking & Metadata
+
+The loader attaches a structured `LoadResult` to the returned `THREE.Group` at `group.userData.loadResult`. It contains stable indices, chemistry arrays, and mappings for picking.
+
+Non‑instanced picking:
+
+```js
+const group = loadSDF(sdfText, { showHydrogen: true, useCylinders: false });
+const res = group.userData.loadResult; // { metadata, chemistry, mappings, ... }
+
+// Raycast → mesh → atom index
+const raycaster = new THREE.Raycaster();
+raycaster.setFromCamera(mouse, camera);
+const hit = raycaster.intersectObject(group, true)[0];
+if (hit?.object?.userData?.role === 'atom') {
+  const { index, element } = hit.object.userData.atom; // 0-based index
+  console.log(index, element);
+}
+```
+
+Instanced picking:
+
+```js
+const group = loadSDF(sdfText, { includeHydrogens: true, instancing: true });
+const res = group.userData.loadResult;
+
+const hit = raycaster.intersectObject(res.mappings.instancedAtoms.mesh, true)[0];
+if (hit && hit.instanceId != null) {
+  const atomIndex = res.mappings.instancedAtoms.instanceToAtomIndex[hit.instanceId];
+  const atom = res.chemistry.atoms[atomIndex];
+}
+```
+
+Notes:
+
+- Indices are 0‑based and align with SDF atom/bond block order.
+- Coordinates are kept in Å in the `chemistry` arrays. Visuals can be scaled using `coordinateScale` or by transforming the returned `Group`.
+
+#### LoaderOptions (additions)
+
+```ts
+type LoaderOptions = {
+  instancing?: boolean; // default false
+  createBonds?: boolean; // default true
+  includeHydrogens?: boolean; // default true (overrides legacy showHydrogen)
+  atomGeometry?: { type?: 'icosahedron' | 'sphere'; detail?: number; radius?: number };
+  bondGeometry?: { type?: 'cylinder' | 'line'; radius?: number };
+  performance?: { skipBondsOverAtomThreshold?: number };
+  onProgress?: (stage: string, value: number) => void;
+  coordinateScale?: number; // default 1.0
+};
+```
+
+The existing options remain supported. The group remains structured exactly as before for backward compatibility; the new metadata is available via `group.userData.loadResult`.

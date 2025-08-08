@@ -1,35 +1,93 @@
 import * as THREE from 'three';
 
+// Back-compat options (existing)
 export interface LoadSDFOptions {
-  /** Render hydrogens when true (default: false) */
   showHydrogen?: boolean;
-  /** Override per-element material colours */
   elementColors?: Record<string, THREE.ColorRepresentation>;
-  /** Override per-element sphere radii */
   elementRadii?: Record<string, number>;
-  /** Attach full atom record to each Mesh.userData when true (default: true) */
   attachAtomData?: boolean;
-  /** Attach molecule properties to Group.userData when true (default: true) */
   attachProperties?: boolean;
-  /** Render double/triple bonds as parallel lines when true (default: true) */
   renderMultipleBonds?: boolean;
-  /** Distance between parallel lines for multiple bonds (scene units, default: 0.1) */
   multipleBondOffset?: number;
-  /** Render bonds as cylinders instead of line segments (default: true) */
   useCylinders?: boolean;
-  /** Radius of cylinder bonds when useCylinders=true (scene units, default: 0.02) */
   bondRadius?: number;
-  /** Automatically infer coordination (order 0) bonds for common metals (default: true) */
   autoDetectMetalBonds?: boolean;
-  /** Multiplier applied to closest metal–ligand distance for adaptive cutoff (default: 1.4) */
   relFactor?: number;
-  /** Layout mode: 'auto' | '2d' | '3d' (default: 'auto') */
   layout?: 'auto' | '2d' | '3d';
-  /** Automatically infer three-center bonds (e.g., B–H–B bridges) when true (default: true) */
   inferBridgingBonds?: boolean;
-  addThreeCenterBonds?: boolean; // deprecated, use inferBridgingBonds
-  /** Array of element symbols to hide from rendering (e.g., ['Cl', 'O']) */
+  addThreeCenterBonds?: boolean;
   hiddenElements?: string[];
+}
+
+// New extended options
+export interface LoaderOptions extends LoadSDFOptions {
+  instancing?: boolean;
+  createBonds?: boolean;
+  includeHydrogens?: boolean;
+  atomGeometry?: {
+    type?: 'icosahedron' | 'sphere';
+    detail?: number;
+    widthSegments?: number; // reserved, not used yet
+    radius?: number;
+  };
+  bondGeometry?: {
+    type?: 'cylinder' | 'line';
+    radius?: number;
+  };
+  performance?: {
+    skipBondsOverAtomThreshold?: number;
+  };
+  onProgress?: (stage: string, value: number) => void;
+  coordinateScale?: number;
+}
+
+export interface AtomMeta {
+  index: number; // 0-based
+  element: string; // uppercase symbol
+  atomicNumber?: number;
+  formalCharge?: number;
+  aromatic?: boolean;
+}
+
+export interface BondMeta {
+  index: number; // 0-based
+  beginAtomIndex: number; // 0-based
+  endAtomIndex: number; // 0-based
+  order: 1 | 2 | 3 | 4;
+  aromatic?: boolean;
+}
+
+export interface LoadResult {
+  root: THREE.Group;
+  atomsGroup: THREE.Group; // virtual container
+  bondsGroup?: THREE.Group; // virtual container
+  metadata: {
+    atomCount: number;
+    bondCount: number;
+    title?: string;
+    sdfFormatVersion?: 'V2000' | 'V3000' | string;
+    source?: 'pubchem' | 'nist' | 'cactus' | 'other';
+  };
+  mappings: {
+    atomIndexToMesh?: Array<THREE.Mesh | null>;
+    meshUuidToAtomIndex?: Map<string, number>;
+    instancedAtoms?: {
+      mesh: THREE.InstancedMesh;
+      instanceToAtomIndex: Uint32Array;
+    };
+    bondIndexToMesh?: Array<THREE.Object3D | null>;
+    meshUuidToBondIndex?: Map<string, number>;
+  };
+  chemistry: {
+    atoms: Array<
+      AtomMeta & {
+        x: number;
+        y: number;
+        z: number;
+      }
+    >;
+    bonds: BondMeta[];
+  };
 }
 
 export interface AtomRecord {
@@ -50,22 +108,22 @@ export interface MoleculeRecord {
   [key: string]: unknown;
 }
 
-/**
- * Parse SDF (V2000) text and return a `THREE.Group` ready for rendering.
- */
-export function loadSDF(text: string, options?: LoadSDFOptions): THREE.Group;
+/** Returns a THREE.Group ready for rendering. Also attaches `group.userData.loadResult` */
+export function loadSDF(text: string, options?: LoaderOptions): THREE.Group;
 
-/**
- * Thin wrapper around `sdf-parser` returning a parsed molecule record.
- */
+/** Returns a structured result alongside the root THREE.Group. */
+export function loadSDFResult(
+  text: string,
+  options?: LoaderOptions,
+): LoadResult;
+
+/** Thin wrapper around sdf-parser returning a parsed molecule record. */
 export function parseSDF(
   text: string,
   options?: Record<string, unknown>,
 ): MoleculeRecord;
 
-/**
- * Positions a camera to optimally view a 2D molecular structure
- */
+/** Positions a camera to optimally view a 2D molecular structure */
 export function createPlanarView(
   camera: THREE.Camera,
   boundingBox: THREE.Box3,

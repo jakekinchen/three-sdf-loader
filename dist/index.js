@@ -63,6 +63,34 @@ Object.assign(DEFAULT_RADII, {
 });
 
 const GENERIC_RADIUS = 0.45; // fallback for any unknown element
+// Minimal atomic numbers for common elements
+const ATOMIC_NUMBERS = {
+  H: 1,
+  HE: 2,
+  LI: 3,
+  BE: 4,
+  B: 5,
+  C: 6,
+  N: 7,
+  O: 8,
+  F: 9,
+  NE: 10,
+  NA: 11,
+  MG: 12,
+  AL: 13,
+  SI: 14,
+  P: 15,
+  S: 16,
+  CL: 17,
+  AR: 18,
+  K: 19,
+  CA: 20,
+  FE: 26,
+  CU: 29,
+  ZN: 30,
+  BR: 35,
+  I: 53,
+};
 
 // IUPAC metallic elements (alkali, alkaline-earth, transition, post-transition, lanthanide, actinide)
 const DEFAULT_METALS = new Set([
@@ -168,7 +196,9 @@ const DEFAULT_REL_FACTOR = 1.4;
  */
 function loadSDF(text, options = {}) {
   const {
-    showHydrogen = false,
+    // legacy and new options
+    showHydrogen: legacyShowHydrogen,
+    includeHydrogens,
     layout = 'auto',
     hiddenElements = [],
     elementColors = {},
@@ -177,11 +207,44 @@ function loadSDF(text, options = {}) {
     attachProperties = true,
     renderMultipleBonds = true,
     multipleBondOffset = 0.1,
-    useCylinders = true,
+    useCylinders: legacyUseCylinders,
     bondRadius = 0.02,
     inferBridgingBonds = true,
     addThreeCenterBonds, // deprecated alias
+    bondGeometry,
+    atomGeometry,
+    coordinateScale = 1.0,
+    onProgress,
+    performance = {},
+    instancing = false,
+    createBonds = true,
   } = options;
+
+  // Map new options to legacy flags without breaking behaviour
+  let showHydrogen;
+  if (legacyShowHydrogen !== undefined) {
+    showHydrogen = legacyShowHydrogen;
+  } else if (includeHydrogens !== undefined) {
+    showHydrogen = !!includeHydrogens;
+  } else {
+    showHydrogen = false; // retain legacy default (omit hydrogens)
+  }
+
+  let useCylinders;
+  if (legacyUseCylinders !== undefined) {
+    useCylinders = legacyUseCylinders;
+  } else if (bondGeometry?.type) {
+    useCylinders = bondGeometry.type === 'cylinder';
+  } else {
+    useCylinders = true;
+  }
+
+  const atomGeoType = atomGeometry?.type ?? 'sphere';
+  const atomGeoRadiusOverride = atomGeometry?.radius;
+  const bondRadiusFinal = bondGeometry?.radius ?? bondRadius;
+  const skipBondsOverAtomThreshold = performance?.skipBondsOverAtomThreshold;
+
+  if (typeof onProgress === 'function') onProgress('parse:start', 0);
 
   // Trim anything after first $$$$
   const mainText = text.split('$$$$')[0];
@@ -197,6 +260,8 @@ function loadSDF(text, options = {}) {
   }
   const { atoms = [], bonds = [] } = mol ?? {};
 
+  if (typeof onProgress === 'function') onProgress('parse:done', 0.2);
+
   // ── Determine 2‑D vs 3‑D layout ──
   let layoutMode = layout;
   if (layoutMode === 'auto') {
@@ -209,11 +274,15 @@ function loadSDF(text, options = {}) {
     options.autoDetectMetalBonds !== false &&
     atoms.some((a, i) => {
       if (!DEFAULT_METALS.has(a.symbol.toUpperCase())) return false;
-      return bonds.every((b) => b.beginAtomIdx !== i + 1 && b.endAtomIdx !== i + 1);
+      return bonds.every(
+        (b) => b.beginAtomIdx !== i + 1 && b.endAtomIdx !== i + 1,
+      );
     });
 
-  if ((layoutMode === '3d' || metalUnbonded) &&
-      options.autoDetectMetalBonds !== false) {
+  if (
+    (layoutMode === '3d' || metalUnbonded) &&
+    options.autoDetectMetalBonds !== false
+  ) {
     inferCoordinationBonds(atoms, bonds, options);
   }
 
@@ -225,7 +294,43 @@ function loadSDF(text, options = {}) {
     addInferredBridgingBonds(atoms, bonds, hiddenSet);
   }
   const group = new THREE.Group();
+  group.name = 'molecule';
   group.userData.layoutMode = layoutMode;
+
+  // Prepare chemistry arrays (0-based indices aligned to SDF blocks)
+  const aromaticAtomSet = new Set();
+  const chemistryBonds = bonds.map((bond, i) => {
+    const begin = (bond.beginAtomIdx ?? bond.a ?? 1) - 1;
+    const end = (bond.endAtomIdx ?? bond.b ?? 1) - 1;
+    const isAromatic = bond.order === 4;
+    if (isAromatic) {
+      aromaticAtomSet.add(begin);
+      aromaticAtomSet.add(end);
+    }
+    return {
+      index: i,
+      beginAtomIndex: begin,
+      endAtomIndex: end,
+      order: Math.max(1, Math.min(4, bond.order || 1)),
+      aromatic: isAromatic || undefined,
+    };
+  });
+
+  const chemistryAtoms = atoms.map((atom, i) => {
+    const symUpper = (atom.symbol || atom.element || '').toUpperCase();
+    return {
+      index: i,
+      element: symUpper || '',
+      atomicNumber: ATOMIC_NUMBERS[symUpper],
+      formalCharge: atom.charge ?? atom.formalCharge,
+      aromatic: aromaticAtomSet.has(i) || undefined,
+      x: atom.x,
+      y: atom.y,
+      z: atom.z,
+    };
+  });
+
+  if (typeof onProgress === 'function') onProgress('atoms:start', 0.3);
 
   // Find atoms involved in stereo bonds
   const stereoAtomIndices = new Set();
@@ -238,35 +343,124 @@ function loadSDF(text, options = {}) {
 
   // Build atom meshes and positions
   const atomPositions = [];
-  atoms.forEach((atom, i) => {
-    const { x, y, z, symbol } = atom;
-    const symUpper = symbol.toUpperCase();
+  const atomIndexToMesh = new Array(atoms.length).fill(null);
+  const meshUuidToAtomIndex = new Map();
 
-    // Store position for visible atoms or atoms involved in stereo bonds
-    if (!hiddenSet.has(symUpper) || stereoAtomIndices.has(i)) {
-      atomPositions[i] = new THREE.Vector3(x, y, z);
-    }
+  // Instancing path: single InstancedMesh of spheres (uniform geometry)
+  if (instancing) {
+    const visibleAtoms = [];
+    atoms.forEach((atom, i) => {
+      const symUpper = (atom.symbol || '').toUpperCase();
+      if (!hiddenSet.has(symUpper)) visibleAtoms.push({ atom, i });
+      if (!hiddenSet.has(symUpper) || stereoAtomIndices.has(i)) {
+        atomPositions[i] = new THREE.Vector3(
+          atom.x * coordinateScale,
+          atom.y * coordinateScale,
+          atom.z * coordinateScale,
+        );
+      }
+    });
 
-    // Only create mesh for visible atoms
-    if (hiddenSet.has(symUpper)) return;
+    const instanceCount = visibleAtoms.length;
+    const baseRadius = atomGeoRadiusOverride ?? GENERIC_RADIUS;
+    const geometry =
+      atomGeoType === 'sphere'
+        ? getSphereGeometry(baseRadius)
+        : new THREE.IcosahedronGeometry(baseRadius, atomGeometry?.detail ?? 0);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const imesh = new THREE.InstancedMesh(geometry, material, instanceCount);
+    imesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    const dummy = new THREE.Object3D();
+    const instanceToAtomIndex = new Uint32Array(instanceCount);
 
-    const radius =
-      elementRadii[symUpper] ?? DEFAULT_RADII[symUpper] ?? GENERIC_RADIUS;
-    const color =
-      elementColors[symUpper] ?? DEFAULT_COLORS[symUpper] ?? 0xffffff;
+    visibleAtoms.forEach(({ atom, i }, instanceId) => {
+      dummy.position.set(
+        atom.x * coordinateScale,
+        atom.y * coordinateScale,
+        atom.z * coordinateScale,
+      );
+      dummy.updateMatrix();
+      imesh.setMatrixAt(instanceId, dummy.matrix);
+      instanceToAtomIndex[instanceId] = i;
+    });
 
-    const geometry = getSphereGeometry(radius);
-    const material = new THREE.MeshBasicMaterial({ color });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(x, y, z);
+    imesh.userData.role = 'atomsInstanced';
+    imesh.userData.instanceToAtomIndex = instanceToAtomIndex;
+    imesh.userData.atomMeta = {
+      elementByAtomIndex: chemistryAtoms.map((a) => a.element),
+      atomicNumberByAtomIndex: chemistryAtoms.map((a) => a.atomicNumber ?? 0),
+      formalChargeByAtomIndex: chemistryAtoms.map((a) => a.formalCharge ?? 0),
+      aromaticByAtomIndex: chemistryAtoms.map((a) => !!a.aromatic),
+    };
 
-    if (attachAtomData) mesh.userData.atom = atom;
+    group.add(imesh);
 
-    group.add(mesh);
-  });
+    // In instanced mode we do not populate atomIndexToMesh / meshUuidToAtomIndex
+  } else {
+    atoms.forEach((atom, i) => {
+      const { x, y, z, symbol } = atom;
+      const symUpper = (symbol || '').toUpperCase();
+
+      // Store position for visible atoms or atoms involved in stereo bonds
+      if (!hiddenSet.has(symUpper) || stereoAtomIndices.has(i)) {
+        atomPositions[i] = new THREE.Vector3(
+          x * coordinateScale,
+          y * coordinateScale,
+          z * coordinateScale,
+        );
+      }
+
+      // Only create mesh for visible atoms
+      if (hiddenSet.has(symUpper)) return;
+
+      const radius =
+        atomGeoRadiusOverride ??
+        elementRadii[symUpper] ??
+        DEFAULT_RADII[symUpper] ??
+        GENERIC_RADIUS;
+      const color =
+        elementColors[symUpper] ?? DEFAULT_COLORS[symUpper] ?? 0xffffff;
+
+      const geometry =
+        atomGeoType === 'sphere'
+          ? getSphereGeometry(radius)
+          : new THREE.IcosahedronGeometry(radius, atomGeometry?.detail ?? 0);
+      const material = new THREE.MeshBasicMaterial({ color });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(
+        x * coordinateScale,
+        y * coordinateScale,
+        z * coordinateScale,
+      );
+
+      mesh.userData.role = 'atom';
+      if (attachAtomData) {
+        mesh.userData.atom = {
+          ...atom,
+          index: i,
+          element: (symbol || '').toUpperCase(),
+          atomicNumber: ATOMIC_NUMBERS[(symbol || '').toUpperCase()],
+          formalCharge: atom.charge ?? atom.formalCharge,
+          aromatic: aromaticAtomSet.has(i) || undefined,
+        };
+      }
+
+      group.add(mesh);
+
+      atomIndexToMesh[i] = mesh;
+      meshUuidToAtomIndex.set(mesh.uuid, i);
+    });
+  }
+
+  if (typeof onProgress === 'function') onProgress('atoms:done', 0.6);
 
   // Build bonds using LineSegments (lighter than cylinders)
-  if (bonds.length) {
+  const bondIndexToMesh = new Array(bonds.length).fill(null);
+  const meshUuidToBondIndex = new Map();
+  const shouldCreateBonds =
+    createBonds &&
+    (!skipBondsOverAtomThreshold || atoms.length <= skipBondsOverAtomThreshold);
+  if (bonds.length && shouldCreateBonds) {
     const verts = [];
     const up = new THREE.Vector3(0, 1, 0);
 
@@ -293,7 +487,7 @@ function loadSDF(text, options = {}) {
       return up.clone();
     })();
 
-    bonds.forEach((bond) => {
+    bonds.forEach((bond, bondIndex) => {
       const a = atomPositions[bond.beginAtomIdx - 1];
       const b = atomPositions[bond.endAtomIdx - 1];
       if (!a || !b) return;
@@ -319,11 +513,22 @@ function loadSDF(text, options = {}) {
             .multiplyScalar(0.5);
           const mesh = new THREE.Mesh(cylGeo, cylMat);
           // scale: radius in X/Z, length in Y
-          mesh.scale.set(bondRadius * 2, len, bondRadius * 2);
+          mesh.scale.set(bondRadiusFinal * 2, len, bondRadiusFinal * 2);
           // orient: Y axis → dir
           mesh.quaternion.setFromUnitVectors(up, dirVec.clone().normalize());
           mesh.position.copy(mid);
+          // Attach bond metadata to mesh for picking
+          mesh.userData.role = 'bond';
+          mesh.userData.bond = {
+            index: bondIndex,
+            beginAtomIndex: (bond.beginAtomIdx ?? 1) - 1,
+            endAtomIndex: (bond.endAtomIdx ?? 1) - 1,
+            order,
+            aromatic: isAromatic || undefined,
+          };
           group.add(mesh);
+          bondIndexToMesh[bondIndex] = mesh;
+          meshUuidToBondIndex.set(mesh.uuid, bondIndex);
         } else if (isAromatic || isBridge) {
           const geom = new THREE.BufferGeometry().setFromPoints([aOff, bOff]);
           const dash = isAromatic ? 0.15 : 0.08; // finer pattern for bridges
@@ -344,8 +549,9 @@ function loadSDF(text, options = {}) {
 
       // ── stereochemistry (wedge / hash) ──
       if (bond.stereo && order === 1) {
-        if (bond.stereo === 1) addSolidWedge(a, b, bondRadius, group, up);
-        else if (bond.stereo === 6) addHashedWedge(a, b, bondRadius, group, up);
+        if (bond.stereo === 1) addSolidWedge(a, b, bondRadiusFinal, group, up);
+        else if (bond.stereo === 6)
+          addHashedWedge(a, b, bondRadiusFinal, group, up);
         else addBond(new THREE.Vector3(0, 0, 0)); // wavy fallback
         return; // skip normal line rendering
       }
@@ -400,6 +606,52 @@ function loadSDF(text, options = {}) {
   if (attachProperties) {
     group.userData.properties = mol.properties ?? {};
   }
+
+  // Metadata & result structure
+  const firstLine = (mainText.split('\n')[0] || '').trim();
+  const isV3000 = /^\s*M\s+V30\b/m.test(mainText);
+  const loadResult = {
+    root: group,
+    atomsGroup: (() => {
+      const g = new THREE.Group();
+      g.name = 'atoms';
+      return g;
+    })(),
+    bondsGroup: (() => {
+      const g = new THREE.Group();
+      g.name = 'bonds';
+      return g;
+    })(),
+    metadata: {
+      atomCount: atoms.length,
+      bondCount: bonds.length,
+      title: firstLine || undefined,
+      sdfFormatVersion: isV3000 ? 'V3000' : 'V2000',
+      source: 'other',
+    },
+    mappings: {
+      atomIndexToMesh: instancing ? undefined : atomIndexToMesh,
+      meshUuidToAtomIndex: instancing ? undefined : meshUuidToAtomIndex,
+      instancedAtoms: instancing
+        ? {
+            mesh: group.children.find((c) => c.isInstancedMesh) || null,
+            instanceToAtomIndex:
+              group.children.find((c) => c.isInstancedMesh)?.userData
+                .instanceToAtomIndex || new Uint32Array(),
+          }
+        : undefined,
+      bondIndexToMesh,
+      meshUuidToBondIndex,
+    },
+    chemistry: {
+      atoms: chemistryAtoms,
+      bonds: chemistryBonds,
+    },
+  };
+
+  group.userData.loadResult = loadResult;
+
+  if (typeof onProgress === 'function') onProgress('done', 1.0);
 
   return group;
 }
@@ -706,4 +958,14 @@ function addHashedWedge(a, b, r, group, up) {
   }
 }
 
-export { loadSDF, parseSDF };
+/**
+ * Structured result API: returns LoadResult in addition to creating a THREE.Group.
+ * Non-breaking: existing loadSDF keeps returning Group, while attaching the result
+ * to group.userData.loadResult. This helper simply exposes the structure.
+ */
+function loadSDFResult(text, options = {}) {
+  const group = loadSDF(text, options);
+  return group.userData.loadResult;
+}
+
+export { loadSDF, loadSDFResult, parseSDF };
