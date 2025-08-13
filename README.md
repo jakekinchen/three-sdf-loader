@@ -56,6 +56,21 @@ scene.add(molecule);
 | `renderMultipleBonds` | `boolean`                        | `true`  | Render double / triple bonds as parallel lines.                |
 | `multipleBondOffset`  | `number`                         | `0.1`   | Separation between parallel lines (scene units).               |
 | `addThreeCenterBonds` | `boolean`                        | `true`  | Infer three-center bonds (e.g., B–H–B bridges in diborane).    |
+| `instancing`          | `boolean`                        | `false` | Use `InstancedMesh` for atoms.                                 |
+| `instancedBonds`      | `boolean`                        | `false` | Use `InstancedMesh` for cylinder bonds (perf).                 |
+| `useCylinders`        | `boolean`                        | `true`  | Cylinder bonds; set `false` for lines.                         |
+| `useFatLines`         | `boolean`                        | `false` | Use Line2/LineMaterial (if available) for thicker lines.       |
+| `style`               | `'ballStick'\|'spaceFill'\|'licorice'` | `ballStick` | Visual preset adjusting atom/bond scale.                       |
+| `palette`             | `'default'\|'jmol'\|'material'` | `default` | Element color palette; `elementColors` overrides per-element.  |
+| `materialFactory`     | `(role, default)=>material`      | —       | Hook to override materials by role.                            |
+| `coordinateScale`     | `number`                         | `1.0`   | Global scale for coordinates (scene units per Å or nm).        |
+| `units`               | `'angstrom'\|'nm'\|'scene'`   | `angstrom` | Input coordinate units.                                        |
+| `index`               | `number`                         | `0`     | For multi-record SDFs, selects which record to load.           |
+| `headless`            | `boolean`                        | `false` | Parse-only mode; returns chemistry/metadata without geometry.  |
+| `performance.atomSegments` | `number`                   | `16`    | Sphere segments (memoized).                                    |
+| `performance.bondSegments` | `number`                   | `8`     | Cylinder segments.                                             |
+| `performance.buildBondBVH` | `boolean`                   | `true`  | Build BVH for fast line-mode bond picking.                     |
+| `performance.usePCANormal` | `boolean`                   | `false` | Use PCA for multiple-bond offset direction.                    |
 
 ## 2-D vs 3-D layout detection
 
@@ -161,21 +176,120 @@ if (hit && hit.instanceId != null) {
 Notes:
 
 - Indices are 0‑based and align with SDF atom/bond block order.
-- Coordinates are kept in Å in the `chemistry` arrays. Visuals can be scaled using `coordinateScale` or by transforming the returned `Group`.
+- Coordinates are in Å by default in `chemistry`. Set `units: 'nm'` to interpret inputs as nanometers. Visuals can be scaled using `coordinateScale` or by transforming the returned `Group`.
 
 #### LoaderOptions (additions)
 
 ```ts
 type LoaderOptions = {
-  instancing?: boolean; // default false
-  createBonds?: boolean; // default true
-  includeHydrogens?: boolean; // default true (overrides legacy showHydrogen)
-  atomGeometry?: { type?: 'icosahedron' | 'sphere'; detail?: number; radius?: number };
-  bondGeometry?: { type?: 'cylinder' | 'line'; radius?: number };
-  performance?: { skipBondsOverAtomThreshold?: number };
+  instancing?: boolean;
+  instancedBonds?: boolean;
+  useFatLines?: boolean;
+  headless?: boolean;
+  createBonds?: boolean;
+  includeHydrogens?: boolean;
+  atomGeometry?: { type?: 'icosahedron' | 'sphere'; detail?: number; widthSegments?: number; radius?: number };
+  bondGeometry?: { type?: 'cylinder' | 'line'; radius?: number; segments?: number };
+  performance?: { skipBondsOverAtomThreshold?: number; atomSegments?: number; bondSegments?: number; buildBondBVH?: boolean; usePCANormal?: boolean };
   onProgress?: (stage: string, value: number) => void;
-  coordinateScale?: number; // default 1.0
+  coordinateScale?: number;
+  units?: 'angstrom' | 'nm' | 'scene';
+  palette?: 'default' | 'jmol' | 'material';
+  style?: 'ballStick' | 'spaceFill' | 'licorice';
+  index?: number;
+  materialFactory?: (role: 'atom'|'atomInstanced'|'bondCylinder'|'bondLine'|'bondDashed', defaultMaterial: THREE.Material) => THREE.Material;
 };
 ```
 
 The existing options remain supported. The group remains structured exactly as before for backward compatibility; the new metadata is available via `group.userData.loadResult`.
+
+#### Palettes and data sources
+
+- Default colors are CPK‑ish and inspired by community conventions.
+- The `'jmol'` palette approximates the Jmol color set.
+- The `'material'` palette provides muted Material‑style hues for UI consistency.
+- Atomic numbers table covers 1–118 based on periodic table ordering.
+
+You can always override any entry with `elementColors`.
+
+### Recipes
+
+#### Parse-only (headless) usage
+
+```js
+import { loadSDF } from 'three-sdf-loader';
+
+const group = loadSDF(text, { headless: true });
+const { chemistry, metadata } = group.userData.loadResult;
+console.log(metadata.title, chemistry.atoms.length, chemistry.bonds.length);
+```
+
+#### Instanced atoms and bonds (performance)
+
+```js
+const group = loadSDF(text, {
+  includeHydrogens: true,
+  instancing: true,        // atoms via InstancedMesh
+  instancedBonds: true,    // cylinders via InstancedMesh
+});
+scene.add(group);
+```
+
+#### Fat lines (Line2) for WebGPU and thicker strokes
+
+```js
+// Requires three/examples/jsm/lines loaded in your app
+const group = loadSDF(text, {
+  useCylinders: false,
+  useFatLines: true, // falls back to thin lines if Line2 is unavailable
+});
+```
+
+#### Center and fit to a target radius
+
+```js
+const group = loadSDF(text);
+// Compute bounds and re-center (and optionally uniform-scale)
+group.userData.center('centerAndScale', 5.0); // fit to radius=5 scene units
+```
+
+#### Bond picking in line mode (BVH-accelerated)
+
+```js
+const group = loadSDF(text, { useCylinders: false });
+const raycaster = new THREE.Raycaster();
+raycaster.setFromCamera(mouse, camera);
+const hit = group.userData.pickBond(raycaster, { threshold: 0.05 });
+if (hit) {
+  console.log('Bond index:', hit.bondIndex, 'Distance:', Math.sqrt(hit.distanceSq));
+}
+```
+
+#### Atom picking (instanced and non‑instanced)
+
+```js
+const res = group.userData.loadResult;
+const raycaster = new THREE.Raycaster();
+raycaster.setFromCamera(mouse, camera);
+const hit = raycaster.intersectObject(group, true)[0];
+const atomIndex = group.userData.pickAtom(hit); // null if none
+```
+
+#### Custom materials via materialFactory
+
+```js
+const group = loadSDF(text, {
+  materialFactory: (role, defaultMat) => {
+    if (role === 'atom') return new THREE.MeshStandardMaterial({ color: defaultMat.color });
+    if (role === 'bondCylinder') return new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.1, roughness: 0.8 });
+    return defaultMat;
+  },
+});
+```
+
+#### Multi‑record selection and units
+
+```js
+// Select the 3rd record from a multi-record SDF and interpret as nanometers
+const group = loadSDF(text, { index: 2, units: 'nm' });
+```
