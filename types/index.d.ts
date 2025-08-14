@@ -13,6 +13,7 @@ export interface LoadSDFOptions {
   bondRadius?: number;
   autoDetectMetalBonds?: boolean;
   relFactor?: number;
+  cutoff?: number;
   layout?: 'auto' | '2d' | '3d';
   inferBridgingBonds?: boolean;
   addThreeCenterBonds?: boolean;
@@ -51,6 +52,9 @@ export interface LoaderOptions extends LoadSDFOptions {
   coordinateScale?: number;
   units?: 'angstrom' | 'nm' | 'scene';
   index?: number; // selected record index for multi-record SDF
+  // coordination inference controls
+  coordinationMode?: 'none' | 'transitionOnly' | 'all';
+  suppressOppositeChargeCoordination?: boolean;
 }
 
 export interface AtomMeta {

@@ -24,21 +24,33 @@ export interface LoaderOptions extends LoadSDFOptions {
   instancing?: boolean;
   createBonds?: boolean;
   includeHydrogens?: boolean;
+  materialFactory?: (role: 'atom' | 'atomInstanced' | 'bondCylinder' | 'bondLine' | 'bondDashed', defaultMaterial: THREE.Material) => THREE.Material;
+  palette?: 'default' | 'jmol' | 'material';
+  style?: 'ballStick' | 'spaceFill' | 'licorice';
+  instancedBonds?: boolean;
+  useFatLines?: boolean;
+  headless?: boolean;
   atomGeometry?: {
     type?: 'icosahedron' | 'sphere';
     detail?: number;
-    widthSegments?: number; // reserved, not used yet
+    widthSegments?: number;
+    segments?: number;
     radius?: number;
   };
   bondGeometry?: {
     type?: 'cylinder' | 'line';
     radius?: number;
+    segments?: number;
   };
   performance?: {
     skipBondsOverAtomThreshold?: number;
+    atomSegments?: number;
+    bondSegments?: number;
   };
   onProgress?: (stage: string, value: number) => void;
   coordinateScale?: number;
+  units?: 'angstrom' | 'nm' | 'scene';
+  index?: number; // selected record index for multi-record SDF
 }
 
 export interface AtomMeta {
@@ -122,6 +134,12 @@ export function parseSDF(
   text: string,
   options?: Record<string, unknown>,
 ): MoleculeRecord;
+
+/** Returns all parsed molecule records from a multi-record SDF string */
+export function parseSDFAll(
+  text: string,
+  options?: Record<string, unknown>,
+): MoleculeRecord[];
 
 /** Positions a camera to optimally view a 2D molecular structure */
 export function createPlanarView(

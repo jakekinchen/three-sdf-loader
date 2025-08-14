@@ -56,9 +56,13 @@ scene.add(molecule);
 | `renderMultipleBonds` | `boolean`                        | `true`  | Render double / triple bonds as parallel lines.                |
 | `multipleBondOffset`  | `number`                         | `0.1`   | Separation between parallel lines (scene units).               |
 | `addThreeCenterBonds` | `boolean`                        | `true`  | Infer three-center bonds (e.g., B–H–B bridges in diborane).    |
+| `coordinationMode`    | `'none'|'transitionOnly'|'all'`  | `transitionOnly` | Scope of coordination bond inference. `'all'` mirrors older behavior. |
+| `suppressOppositeChargeCoordination` | `boolean`         | `true`  | When inferring coordination, skip links between oppositely charged ions. |
+| `relFactor`           | `number`                         | `1.4`   | Relative factor on closest distance for adaptive thresholding. |
+| `cutoff`              | `number`                         | `3.0`   | Hard minimum distance (Å) for coordination inference.          |
 | `instancing`          | `boolean`                        | `false` | Use `InstancedMesh` for atoms.                                 |
 | `instancedBonds`      | `boolean`                        | `false` | Use `InstancedMesh` for cylinder bonds (perf).                 |
-| `useCylinders`        | `boolean`                        | `true`  | Cylinder bonds; set `false` for lines.                         |
+| `useCylinders`        | `boolean`                        | `true`  | Cylinder bonds; set `false` for lines (order‑0 bonds render dashed). |
 | `useFatLines`         | `boolean`                        | `false` | Use Line2/LineMaterial (if available) for thicker lines.       |
 | `style`               | `'ballStick'\|'spaceFill'\|'licorice'` | `ballStick` | Visual preset adjusting atom/bond scale.                       |
 | `palette`             | `'default'\|'jmol'\|'material'` | `default` | Element color palette; `elementColors` overrides per-element.  |
@@ -81,7 +85,7 @@ const group = loadSDF(text);      // ← auto-detects layout
 console.log(group.userData.layoutMode); // '2d' or '3d'
 ```
 
-When the layout is `'2d'`, the loader skips coordination-bond inference to avoid false positives and lets your app decide how to frame the molecule (e.g., swap to an orthographic camera). However, if any metal atoms have zero explicit bonds, coordination inference will still run to fix common cases like ferrocene. You can override detection with `layout: '2d' | '3d'` if needed.
+When the layout is `'2d'`, the loader skips coordination-bond inference to avoid false positives and lets your app decide how to frame the molecule (e.g., swap to an orthographic camera). However, if any metal atoms have zero explicit bonds, coordination inference will still run to fix common cases like ferrocene (honoring `coordinationMode`). You can override detection with `layout: '2d' | '3d'` if needed.
 
 ## Example (browser)
 

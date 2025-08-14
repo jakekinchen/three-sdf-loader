@@ -32,7 +32,7 @@ describe('loadSDF', () => {
     const group = loadSDF(WATER_SDF, { showHydrogen: true, useCylinders: false });
     const spheres = group.children.filter((c) => c.type === 'Mesh');
     expect(spheres.length).toBe(3);
-    const hasLines = group.children.some((c) => c.type === 'LineSegments');
+    const hasLines = group.children.some((c) => c.type === 'LineSegments' || c.type === 'Line');
     expect(hasLines).toBe(true);
   });
 
@@ -79,11 +79,11 @@ describe('loadSDF', () => {
 
   it('creates line segments when useCylinders=false', () => {
     const g = loadSDF(WATER_SDF, { showHydrogen: true, useCylinders: false });
-    const hasLine = g.children.some((c) => c.type === 'LineSegments');
+    const hasLine = g.children.some((c) => c.type === 'LineSegments' || c.type === 'Line');
     expect(hasLine).toBe(true);
   });
 
-  it('infers metal–ligand coordination bonds by default', () => {
+  it('infers metal–ligand coordination bonds by default (transition metals only)', () => {
     const SIMPLE_FE_C = `fe-c
       Example
 
@@ -94,8 +94,8 @@ describe('loadSDF', () => {
     $$$$`;
 
     const g = loadSDF(SIMPLE_FE_C, { useCylinders: false, layout: '3d' });
-    const line = g.children.find((c) => c.type === 'LineSegments');
-    expect(line).toBeDefined();
+    const hasAnyLink = g.children.some((c) => c.type === 'LineSegments' || c.type === 'Line');
+    expect(hasAnyLink).toBe(true);
   });
 
   it('respects relFactor for cutoff scaling', () => {
@@ -110,18 +110,18 @@ describe('loadSDF', () => {
 
     // With default relFactor (1.4) a bond should be inferred (threshold 5.6)
     const gDefault = loadSDF(FLAT_FE_C2, { useCylinders: false, layout: '3d' });
-    const hasDefault = gDefault.children.some((c) => c.type === 'LineSegments');
+    const hasDefault = gDefault.children.some((c) => c.type === 'LineSegments' || c.type === 'Line');
     expect(hasDefault).toBe(true);
 
     // Lowering relFactor below 1 should remove the bond (threshold falls to 3)
     const gLow = loadSDF(FLAT_FE_C2, { useCylinders: false, relFactor: 0.5, layout: '3d' });
-    const hasLow = gLow.children.some((c) => c.type === 'LineSegments');
+    const hasLow = gLow.children.some((c) => c.type === 'LineSegments' || c.type === 'Line');
     expect(hasLow).toBe(false);
   });
 
   it('should parse molecule properties', () => {
     const sdfText = fs.readFileSync('test/bigcoords.sdf', 'utf8');
     const group = loadSDF(sdfText, { showHydrogen: false });
-    expect(group.children.length).toBe(3); // 2x Boron, 1x Bond
+    expect(group.children.length).toBe(3); // 2x Boron, 1x Bond (dashed or solid)
   });
 }); 
