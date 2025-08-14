@@ -288,6 +288,8 @@ export function loadSDF(text, options = {}) {
     index = 0,
     instancedBonds = false,
     headless = false,
+    hideIsolatedAtoms = false,
+    isolatedAtomCutoff = DEFAULT_CUTOFF,
     // coordination inference controls
     coordinationMode, // 'none' | 'transitionOnly' | 'all' (default handled below)
     suppressOppositeChargeCoordination = true,
@@ -477,6 +479,34 @@ export function loadSDF(text, options = {}) {
     }
   });
 
+  // Optionally determine isolated atoms (no bonds, far from any neighbor)
+  const isolatedAtomIndices = new Set();
+  if (hideIsolatedAtoms) {
+    const degrees = new Array(atoms.length).fill(0);
+    bonds.forEach((b) => {
+      const a = (b.beginAtomIdx ?? 1) - 1;
+      const c = (b.endAtomIdx ?? 1) - 1;
+      if (a >= 0 && a < degrees.length) degrees[a] += 1;
+      if (c >= 0 && c < degrees.length) degrees[c] += 1;
+    });
+    for (let i = 0; i < atoms.length; i += 1) {
+      if (degrees[i] > 0) continue; // not isolated
+      // compute nearest neighbor distance
+      let dmin = Infinity;
+      const ai = atoms[i];
+      for (let j = 0; j < atoms.length; j += 1) {
+        if (i === j) continue;
+        const aj = atoms[j];
+        const dx = ai.x - aj.x;
+        const dy = ai.y - aj.y;
+        const dz = ai.z - aj.z;
+        const d = Math.hypot(dx, dy, dz);
+        if (d < dmin) dmin = d;
+      }
+      if (dmin > isolatedAtomCutoff) isolatedAtomIndices.add(i);
+    }
+  }
+
   // Build atom meshes and positions
   const atomPositions = [];
   const atomIndexToMesh = new Array(atoms.length).fill(null);
@@ -518,7 +548,7 @@ export function loadSDF(text, options = {}) {
     const visibleAtoms = [];
     atoms.forEach((atom, i) => {
       const symUpper = (atom.symbol || '').toUpperCase();
-      if (!hiddenSet.has(symUpper)) visibleAtoms.push({ atom, i });
+      if (!hiddenSet.has(symUpper) && !isolatedAtomIndices.has(i)) visibleAtoms.push({ atom, i });
       if (!hiddenSet.has(symUpper) || stereoAtomIndices.has(i)) {
         atomPositions[i] = new THREE.Vector3(
           atom.x * coordScale,
@@ -596,7 +626,7 @@ export function loadSDF(text, options = {}) {
       }
 
       // Only create mesh for visible atoms
-      if (hiddenSet.has(symUpper)) return;
+      if (hiddenSet.has(symUpper) || isolatedAtomIndices.has(i)) return;
 
       let styleRadiusScale = 1.0;
       if (style === 'spaceFill') styleRadiusScale = 2.0;

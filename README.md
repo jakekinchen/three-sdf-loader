@@ -64,6 +64,8 @@ scene.add(molecule);
 | `instancedBonds`      | `boolean`                        | `false` | Use `InstancedMesh` for cylinder bonds (perf).                 |
 | `useCylinders`        | `boolean`                        | `true`  | Cylinder bonds; set `false` for lines (order‑0 bonds render dashed). |
 | `useFatLines`         | `boolean`                        | — | Removed. Only classic `LineSegments` or cylinder bonds are supported. |
+| `hideIsolatedAtoms`   | `boolean`                        | `false` | Hide atoms with zero bonds that are farther than cutoff from any neighbor. |
+| `isolatedAtomCutoff`  | `number`                         | `3.0`   | Distance threshold (Å) used when `hideIsolatedAtoms` is true. |
 | `style`               | `'ballStick'\|'spaceFill'\|'licorice'` | `ballStick` | Visual preset adjusting atom/bond scale.                       |
 | `palette`             | `'default'\|'jmol'\|'material'` | `default` | Element color palette; `elementColors` overrides per-element.  |
 | `materialFactory`     | `(role, default)=>material`      | —       | Hook to override materials by role.                            |
@@ -188,10 +190,11 @@ Notes:
 type LoaderOptions = {
   instancing?: boolean;
   instancedBonds?: boolean;
-  useFatLines?: boolean;
   headless?: boolean;
   createBonds?: boolean;
   includeHydrogens?: boolean;
+  hideIsolatedAtoms?: boolean;
+  isolatedAtomCutoff?: number;
   atomGeometry?: { type?: 'icosahedron' | 'sphere'; detail?: number; widthSegments?: number; radius?: number };
   bondGeometry?: { type?: 'cylinder' | 'line'; radius?: number; segments?: number };
   performance?: { skipBondsOverAtomThreshold?: number; atomSegments?: number; bondSegments?: number; buildBondBVH?: boolean; usePCANormal?: boolean };

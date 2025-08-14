@@ -30,6 +30,8 @@ export interface LoaderOptions extends LoadSDFOptions {
   style?: 'ballStick' | 'spaceFill' | 'licorice';
   instancedBonds?: boolean;
   headless?: boolean;
+  hideIsolatedAtoms?: boolean;
+  isolatedAtomCutoff?: number; // Å
   atomGeometry?: {
     type?: 'icosahedron' | 'sphere';
     detail?: number;

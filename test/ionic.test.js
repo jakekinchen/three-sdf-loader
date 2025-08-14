@@ -30,6 +30,33 @@ describe('ionic systems', () => {
     const hasLink = g.children.some((c) => c.type === 'LineSegments' || c.type === 'Line');
     expect(hasLink).toBe(true);
   });
+
+  it('keeps unbonded ions visible by default (no hiding)', () => {
+    const g = loadSDF(NACL_IONIC, { useCylinders: false, layout: '3d' });
+    const atomMeshes = g.children.filter((c) => c.isMesh);
+    // two atoms placed; no bonds
+    expect(atomMeshes.length).toBe(2);
+  });
+
+  it('can hide isolated ions when hideIsolatedAtoms=true', () => {
+    const g = loadSDF(NACL_IONIC, {
+      useCylinders: false,
+      layout: '3d',
+      hideIsolatedAtoms: true,
+      isolatedAtomCutoff: 2.8, // less than 2.5? No, set above to hide; set to 2.0 to keep
+    });
+    const atomMeshes = g.children.filter((c) => c.isMesh);
+    // distance is 2.5; cutoff 2.8 → both atoms considered near → not hidden
+    expect(atomMeshes.length).toBe(2);
+    const g2 = loadSDF(NACL_IONIC, {
+      useCylinders: false,
+      layout: '3d',
+      hideIsolatedAtoms: true,
+      isolatedAtomCutoff: 2.4, // below 2.5 → should hide both isolated ions
+    });
+    const atomMeshes2 = g2.children.filter((c) => c.isMesh);
+    expect(atomMeshes2.length).toBe(0);
+  });
 });
 
 
