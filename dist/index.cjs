@@ -512,20 +512,22 @@ function loadSDF(text, options = {}) {
       if (c >= 0 && c < degrees.length) degrees[c] += 1;
     });
     for (let i = 0; i < atoms.length; i += 1) {
-      if (degrees[i] > 0) continue; // not isolated
-      // compute nearest neighbor distance
-      let dmin = Infinity;
-      const ai = atoms[i];
-      for (let j = 0; j < atoms.length; j += 1) {
-        if (i === j) continue;
-        const aj = atoms[j];
-        const dx = ai.x - aj.x;
-        const dy = ai.y - aj.y;
-        const dz = ai.z - aj.z;
-        const d = Math.hypot(dx, dy, dz);
-        if (d < dmin) dmin = d;
+      if (degrees[i] > 0) ; else {
+        // compute nearest neighbor distance
+        let dmin = Infinity;
+        const ai = atoms[i];
+        for (let j = 0; j < atoms.length; j += 1) {
+          if (i === j) ; else {
+            const aj = atoms[j];
+            const dx = ai.x - aj.x;
+            const dy = ai.y - aj.y;
+            const dz = ai.z - aj.z;
+            const d = Math.hypot(dx, dy, dz);
+            if (d < dmin) dmin = d;
+          }
+        }
+        if (dmin > isolatedAtomCutoff) isolatedAtomIndices.add(i);
       }
-      if (dmin > isolatedAtomCutoff) isolatedAtomIndices.add(i);
     }
   }
 
