@@ -238,6 +238,12 @@ const DEFAULT_METALS = new Set([
   'NO',
   'LR',
 ]);
+// Transition-metal focused subset for safer default coordination inference
+const TRANSITION_METALS = new Set([
+  'SC','TI','V','CR','MN','FE','CO','NI','CU','ZN',
+  'Y','ZR','NB','MO','TC','RU','RH','PD','AG','CD',
+  'HF','TA','W','RE','OS','IR','PT','AU','HG',
+]);
 // Distance cutoff (Å) for metal–ligand coordination bond inference (hard minimum)
 const DEFAULT_CUTOFF = 3.0;
 // Relative factor multiplier on closest ligand distance (adaptive for 2-D layouts)
@@ -284,6 +290,11 @@ function loadSDF(text, options = {}) {
     instancedBonds = false,
     useFatLines = false,
     headless = false,
+    // coordination inference controls
+    coordinationMode, // 'none' | 'transitionOnly' | 'all' (default handled below)
+    suppressOppositeChargeCoordination = true,
+    relFactor = DEFAULT_REL_FACTOR,
+    cutoff = DEFAULT_CUTOFF,
   } = options;
 
   // Defer options snapshot until group is created
@@ -349,20 +360,35 @@ function loadSDF(text, options = {}) {
   }
 
   // ── Automatic metal–ligand bond inference ──
+  let coordinationModeFinal = coordinationMode ?? 'transitionOnly';
+  if (options.autoDetectMetalBonds === false) {
+    coordinationModeFinal = 'none';
+  } else if (options.autoDetectMetalBonds === true && coordinationMode == null) {
+    coordinationModeFinal = 'all';
+  }
+  let metalSet;
+  if (coordinationModeFinal === 'none') metalSet = new Set();
+  else if (coordinationModeFinal === 'all') metalSet = DEFAULT_METALS;
+  else metalSet = TRANSITION_METALS;
+
   const metalUnbonded =
-    options.autoDetectMetalBonds !== false &&
+    coordinationModeFinal !== 'none' &&
     atoms.some((a, i) => {
-      if (!DEFAULT_METALS.has(a.symbol.toUpperCase())) return false;
+      if (!metalSet.has(a.symbol.toUpperCase())) return false;
       return bonds.every(
         (b) => b.beginAtomIdx !== i + 1 && b.endAtomIdx !== i + 1,
       );
     });
 
-  if (
-    (layoutMode === '3d' || metalUnbonded) &&
-    options.autoDetectMetalBonds !== false
-  ) {
-    inferCoordinationBonds(atoms, bonds, options);
+  if (layoutMode === '3d' || metalUnbonded) {
+    if (coordinationModeFinal !== 'none') {
+      inferCoordinationBonds(atoms, bonds, {
+        metals: metalSet,
+        cutoff,
+        relFactor,
+        suppressOppositeChargeCoordination,
+      });
+    }
   }
 
   // ── Automatic bridging bond inference ──
@@ -723,7 +749,9 @@ function loadSDF(text, options = {}) {
       // ── order & style ──
       const isAromatic = bond.order === 4;
       const isBridge = bond.isBridge === true;
-      let order = bond.order ?? 1;
+      const originalOrder = bond.order ?? 1;
+      const isCoordination = originalOrder === 0;
+      let order = originalOrder;
       if (order < 1 || order > 3) order = 1; // 0,4,8,9 → single
 
       const addBond = (offsetVec) => {
@@ -774,7 +802,7 @@ function loadSDF(text, options = {}) {
           dummy.updateMatrix();
           instancedBondMesh.setMatrixAt(instanceIndex, dummy.matrix);
           instanceIndex += 1;
-        } else if (isAromatic || isBridge) {
+        } else if (isAromatic || isBridge || isCoordination) {
           const geom = new THREE.BufferGeometry().setFromPoints([aOff, bOff]);
           const dash = isAromatic ? 0.15 : 0.08; // finer pattern for bridges
            const defaultDashed = new THREE.LineDashedMaterial({
@@ -1309,6 +1337,7 @@ function inferCoordinationBonds(
     metals = DEFAULT_METALS,
     cutoff = DEFAULT_CUTOFF,
     relFactor = DEFAULT_REL_FACTOR,
+    suppressOppositeChargeCoordination = true,
   } = {},
 ) {
   const seen = new Set(
@@ -1378,6 +1407,11 @@ function inferCoordinationBonds(
       if (dist > threshold) return;
       const a = mi + 1;
       const b = li + 1;
+      if (suppressOppositeChargeCoordination) {
+        const ca = atoms[a - 1]?.charge ?? atoms[a - 1]?.formalCharge ?? 0;
+        const cb = atoms[b - 1]?.charge ?? atoms[b - 1]?.formalCharge ?? 0;
+        if ((ca > 0 && cb < 0) || (ca < 0 && cb > 0)) return;
+      }
       const key = `${Math.min(a, b)}-${Math.max(a, b)}`;
       if (seen.has(key)) return;
       bonds.push({ beginAtomIdx: a, endAtomIdx: b, order: 0 });
