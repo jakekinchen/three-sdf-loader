@@ -63,7 +63,7 @@ scene.add(molecule);
 | `instancing`          | `boolean`                        | `false` | Use `InstancedMesh` for atoms.                                 |
 | `instancedBonds`      | `boolean`                        | `false` | Use `InstancedMesh` for cylinder bonds (perf).                 |
 | `useCylinders`        | `boolean`                        | `true`  | Cylinder bonds; set `false` for lines (order‑0 bonds render dashed). |
-| `useFatLines`         | `boolean`                        | `false` | Use Line2/LineMaterial (if available) for thicker lines.       |
+| `useFatLines`         | `boolean`                        | — | Removed. Only classic `LineSegments` or cylinder bonds are supported. |
 | `style`               | `'ballStick'\|'spaceFill'\|'licorice'` | `ballStick` | Visual preset adjusting atom/bond scale.                       |
 | `palette`             | `'default'\|'jmol'\|'material'` | `default` | Element color palette; `elementColors` overrides per-element.  |
 | `materialFactory`     | `(role, default)=>material`      | —       | Hook to override materials by role.                            |
@@ -239,15 +239,7 @@ const group = loadSDF(text, {
 scene.add(group);
 ```
 
-#### Fat lines (Line2) for WebGPU and thicker strokes
-
-```js
-// Requires three/examples/jsm/lines loaded in your app
-const group = loadSDF(text, {
-  useCylinders: false,
-  useFatLines: true, // falls back to thin lines if Line2 is unavailable
-});
-```
+<!-- Fat lines support removed in 0.6.0 -->
 
 #### Center and fit to a target radius
 

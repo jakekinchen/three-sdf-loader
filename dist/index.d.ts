@@ -29,7 +29,6 @@ export interface LoaderOptions extends LoadSDFOptions {
   palette?: 'default' | 'jmol' | 'material';
   style?: 'ballStick' | 'spaceFill' | 'licorice';
   instancedBonds?: boolean;
-  useFatLines?: boolean;
   headless?: boolean;
   atomGeometry?: {
     type?: 'icosahedron' | 'sphere';

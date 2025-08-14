@@ -287,7 +287,6 @@ export function loadSDF(text, options = {}) {
     units = 'angstrom',
     index = 0,
     instancedBonds = false,
-    useFatLines = false,
     headless = false,
     // coordination inference controls
     coordinationMode, // 'none' | 'transitionOnly' | 'all' (default handled below)
@@ -874,29 +873,15 @@ export function loadSDF(text, options = {}) {
       const positions = new Float32Array(verts);
       const geom = new THREE.BufferGeometry();
       geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      if (useFatLines && THREE.LineSegments2 && THREE.LineMaterial && THREE.LineGeometry) {
-        const positionsArray = [];
-        for (let i = 0; i < positions.length; i += 3) positionsArray.push(positions[i], positions[i + 1], positions[i + 2]);
-        const lineGeom = new THREE.LineGeometry();
-        lineGeom.setPositions(positionsArray);
-        const defaultFat = new THREE.LineMaterial({ color: 0xaaaaaa, linewidth: 2 });
-        const fatMat = typeof materialFactory === 'function' ? materialFactory('bondLine', defaultFat) : defaultFat;
-        const lines = new THREE.LineSegments2(lineGeom, fatMat);
-        lines.computeLineDistances();
-        lines.userData.role = 'bondsLineSegments';
-        lines.userData.segmentToBondIndex = new Uint32Array(segmentBondIndexList);
-        group.add(lines);
-      } else {
-        const defaultLine = new THREE.LineBasicMaterial({ color: 0xaaaaaa });
-        const lineMat =
-          typeof materialFactory === 'function'
-            ? materialFactory('bondLine', defaultLine)
-            : defaultLine;
-        const lines = new THREE.LineSegments(geom, lineMat);
-        lines.userData.role = 'bondsLineSegments';
-        lines.userData.segmentToBondIndex = new Uint32Array(segmentBondIndexList);
-        group.add(lines);
-      }
+      const defaultLine = new THREE.LineBasicMaterial({ color: 0xaaaaaa });
+      const lineMat =
+        typeof materialFactory === 'function'
+          ? materialFactory('bondLine', defaultLine)
+          : defaultLine;
+      const lines = new THREE.LineSegments(geom, lineMat);
+      lines.userData.role = 'bondsLineSegments';
+      lines.userData.segmentToBondIndex = new Uint32Array(segmentBondIndexList);
+      group.add(lines);
     }
 
     // Build BVH for line-mode bonds if requested
