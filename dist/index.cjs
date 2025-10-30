@@ -30,6 +30,24 @@ const SPHERE_GEO_CACHE = new Map(); // key: `${radius}|${segments}` → SphereGe
 const CYLINDER_GEO = new THREE__namespace.CylinderGeometry(1, 1, 1, 8); // reused
 const CONE_GEO = new THREE__namespace.ConeGeometry(2, 1, 8, 1, true);
 
+/** Normalize SDF text: Unix newlines, trimmed BOM/leading blanks. */
+function normalizeSDFText(text) {
+  if (typeof text !== 'string') return '';
+  let normalized = text.replace(/\r\n?/g, '\n');
+  if (normalized.charCodeAt(0) === 0xfeff) normalized = normalized.slice(1);
+  normalized = normalized.replace(/^(?:[ \t]*\n)+/, '');
+  return normalized;
+}
+
+/** Light canonicalization for V2000 molfiles: ensure newline after M  END. */
+function canonicalizeV2000(text) {
+  if (typeof text !== 'string') return '';
+  if (/^\s*M\s+V30\b/m.test(text)) return text; // leave V3000 untouched
+  let canonical = text.replace(/\s+$/, '');
+  canonical = canonical.replace(/(M\s+END)(?!\n)/g, '$1\n');
+  return canonical;
+}
+
 /** return memoised sphere geometry */
 function getSphereGeometry(r, segments = 16) {
   const key = `${r}|${segments}`;
@@ -357,19 +375,19 @@ function loadSDF(text, options = {}) {
   if (typeof onProgress === 'function') onProgress('parse:start', 0);
 
   // Support multi-record SDF: split into records, pick first for rendering
-  const recordsSplit = text.split(/\$\$\$\$\s*/).filter((s) => s && s.trim().length > 0);
+  const normalizedText = normalizeSDFText(text);
+  const recordsSplit = normalizedText
+    .split(/\$\$\$\$\s*/)
+    .filter((s) => s && s.trim().length > 0);
   const selectedIndex = Math.max(0, Math.min(index || 0, Math.max(0, recordsSplit.length - 1)));
-  const mainText = recordsSplit[selectedIndex] ?? text;
+  const mainText = recordsSplit[selectedIndex] ?? normalizedText;
 
   // Build hidden elements set
   const hiddenSet = new Set(hiddenElements.map((e) => e.toUpperCase()));
   if (!showHydrogen) hiddenSet.add('H'); // retain legacy flag
 
-  // sdf-parser may return array or single object – normalise
-  let mol = sdfParser.parse(mainText);
-  if (!mol || !mol.atoms || mol.atoms.length === 0) {
-    mol = simpleParse(mainText);
-  }
+  // Parse using resilient helper (handles arrays, V3000, fallback)
+  const mol = parseSDF(mainText, options);
   const { atoms = [], bonds = [] } = mol ?? {};
 
   if (typeof onProgress === 'function') onProgress('parse:done', 0.2);
@@ -1186,17 +1204,19 @@ function loadSDF(text, options = {}) {
 }
 
 function parseSDF(text, options = {}) {
-  if (/^\s*M\s+V30\b/m.test(text)) return parseV3000(text);
+  const normalized = normalizeSDFText(text);
+  if (/^\s*M\s+V30\b/m.test(normalized)) return parseV3000(normalized);
+  const canonical = canonicalizeV2000(normalized);
   if (sdfParser.parse) {
-    const result = sdfParser.parse(text, options);
-    if (
-      result &&
-      (result.atoms || (Array.isArray(result) && result[0]?.atoms))
-    ) {
-      return Array.isArray(result) ? result[0] : result;
+    const result = sdfParser.parse(canonical, options);
+    if (Array.isArray(result)) {
+      const withAtoms = result.find((entry) => entry?.atoms?.length);
+      if (withAtoms) return withAtoms;
+    } else if (result?.atoms?.length) {
+      return result;
     }
   }
-  return simpleParse(text);
+  return simpleParse(canonical);
 }
 
 /**
@@ -1204,7 +1224,8 @@ function parseSDF(text, options = {}) {
  * Returns an array of molecule records.
  */
 function parseSDFAll(text, options = {}) {
-  return text
+  const normalized = normalizeSDFText(text);
+  return normalized
     .split(/\$\$\$\$\s*/)
     .filter((s) => s && s.trim().length > 0)
     .map((t) => parseSDF(t, options));
@@ -1212,14 +1233,18 @@ function parseSDFAll(text, options = {}) {
 
 function simpleParse(text) {
   const lines = text.replace(/\r/g, '').split('\n');
-  if (lines.length < 4) return {};
-  const counts = lines[3].slice(0, 39).trim().split(/\s+/);
+  const countsLineIndex = lines.findIndex((ln) =>
+    /^\s*-?\d+\s+-?\d+/.test(ln),
+  );
+  if (countsLineIndex < 0) return {};
+  const counts = lines[countsLineIndex].slice(0, 39).trim().split(/\s+/);
   const natoms = Number(counts[0]);
   const nbonds = Number(counts[1]);
+  if (!Number.isFinite(natoms) || !Number.isFinite(nbonds)) return {};
 
   const atoms = [];
   for (let i = 0; i < natoms; i += 1) {
-    const l = lines[4 + i] || '';
+    const l = lines[countsLineIndex + 1 + i] || '';
     const parts = l.trim().split(/\s+/);
     let x = parseFloat(parts[0]);
     let y = parseFloat(parts[1]);
@@ -1242,7 +1267,7 @@ function simpleParse(text) {
 
   const bonds = [];
   for (let i = 0; i < nbonds; i += 1) {
-    const l = lines[4 + natoms + i] || '';
+    const l = lines[countsLineIndex + 1 + natoms + i] || '';
     const [a, b, orderStr, stereoStr = '0'] = l.trim().split(/\s+/);
     bonds.push({
       beginAtomIdx: Number(a),
@@ -1253,7 +1278,10 @@ function simpleParse(text) {
   }
 
   const props = {};
-  const mEndIndex = lines.findIndex((ln) => ln.startsWith('M  END'));
+  let mEndIndex = lines.findIndex(
+    (ln, idx) => idx >= countsLineIndex && ln.startsWith('M  END'),
+  );
+  if (mEndIndex < 0) mEndIndex = countsLineIndex + 1 + natoms + nbonds;
   for (let i = mEndIndex + 1; i < lines.length; i += 1) {
     const ln = lines[i];
     // V2000 charge lines: M  CHG  n  idx1  chg1  idx2  chg2 ...
@@ -1471,11 +1499,19 @@ function addInferredBridgingBonds(atoms, bonds, hiddenSet) {
   const isHeavy = (s) =>
     s.toUpperCase() !== 'H' && !hiddenSet.has(s.toUpperCase());
 
+  const inRange = (idx) =>
+    Number.isFinite(idx) && idx >= 1 && idx <= atoms.length;
+
   // Build adjacency list
   const adj = new Map(atoms.map((_, i) => [i + 1, []]));
-  bonds.forEach(({ beginAtomIdx: a, endAtomIdx: b }) => {
-    adj.get(a).push(b);
-    adj.get(b).push(a);
+  bonds.forEach(({ beginAtomIdx: rawA, endAtomIdx: rawB }) => {
+    const a = Number(rawA);
+    const b = Number(rawB);
+    if (!inRange(a) || !inRange(b)) return;
+    const bucketA = adj.get(a);
+    const bucketB = adj.get(b);
+    if (bucketA) bucketA.push(b);
+    if (bucketB) bucketB.push(a);
   });
 
   const seen = new Set(
