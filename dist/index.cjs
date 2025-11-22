@@ -1237,9 +1237,26 @@ function simpleParse(text) {
     /^\s*-?\d+\s+-?\d+/.test(ln),
   );
   if (countsLineIndex < 0) return {};
-  const counts = lines[countsLineIndex].slice(0, 39).trim().split(/\s+/);
-  const natoms = Number(counts[0]);
-  const nbonds = Number(counts[1]);
+  // Prefer fixed-width V2000 columns (1–3 atoms, 4–6 bonds) before whitespace fallback
+  const rawCounts = lines[countsLineIndex] || '';
+  const countsLine = rawCounts.trimStart();
+  const atomsFW = Number(countsLine.slice(0, 3));
+  const bondsFW = Number(countsLine.slice(3, 6));
+  let natoms = atomsFW;
+  let nbonds = bondsFW;
+  const needsFallback =
+    !Number.isFinite(natoms) || !Number.isFinite(nbonds) || natoms <= 0 || nbonds < 0;
+
+  if (needsFallback) {
+    const parts = countsLine.slice(0, 39).trim().split(/\s+/);
+    if (/^\d{6}$/.test(parts[0])) {
+      natoms = Number(parts[0].slice(0, 3));
+      nbonds = Number(parts[0].slice(3));
+    } else {
+      natoms = Number(parts[0]);
+      nbonds = Number(parts[1]);
+    }
+  }
   if (!Number.isFinite(natoms) || !Number.isFinite(nbonds)) return {};
 
   const atoms = [];
