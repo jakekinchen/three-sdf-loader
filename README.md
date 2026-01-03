@@ -184,6 +184,51 @@ Notes:
 - Indices are 0‑based and align with SDF atom/bond block order.
 - Coordinates are in Å by default in `chemistry`. Set `units: 'nm'` to interpret inputs as nanometers. Visuals can be scaled using `coordinateScale` or by transforming the returned `Group`.
 
+#### Bond Metadata (`userData.bond`)
+
+Each bond cylinder mesh (non-instanced mode) exposes detailed metadata at `mesh.userData.bond`:
+
+```ts
+interface BondMeta {
+  index: number;           // 0-based bond index
+  beginAtomIndex: number;  // 0-based
+  endAtomIndex: number;    // 0-based
+  order: 1 | 2 | 3 | 4;    // Normalized order for rendering (4 = aromatic)
+  originalOrder: number;   // Raw order from molfile/inference (0 = coordination, 4 = aromatic)
+  isAromatic?: boolean;    // true when originalOrder === 4
+  isCoordination?: boolean;// true when originalOrder === 0 (ionic/coordination bond)
+  isBridge?: boolean;      // true when bond is a bridging/three-center bond
+  source: 'molfile' | 'inferredCoordination' | 'inferredBridge';
+}
+```
+
+Example: detecting coordination bonds for custom styling:
+
+```js
+const group = loadSDF(text, { useCylinders: true, coordinationMode: 'all' });
+group.traverse((obj) => {
+  if (obj.userData?.bond?.isCoordination) {
+    // Apply dashed overlay or custom material for ionic bonds
+    obj.material = new THREE.MeshBasicMaterial({ color: 0xff6600, wireframe: true });
+  }
+});
+```
+
+For instanced bonds (`instancedBonds: true`), metadata is available via:
+
+```js
+const { instancedBonds } = group.userData.loadResult.mappings;
+if (instancedBonds) {
+  const { instanceToBondIndex, bondTable } = instancedBonds;
+  // On raycast hit with instanceId:
+  const bondIndex = instanceToBondIndex[hit.instanceId];
+  const bondMeta = bondTable[bondIndex];
+  console.log(bondMeta.isCoordination, bondMeta.source);
+}
+```
+
+The `chemistry.bonds` array also includes these fields for programmatic access.
+
 #### LoaderOptions (additions)
 
 ```ts

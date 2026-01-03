@@ -66,12 +66,29 @@ export interface AtomMeta {
   aromatic?: boolean;
 }
 
+/** Source of bond data: from the original molfile or inferred */
+export type BondSource = 'molfile' | 'inferredCoordination' | 'inferredBridge';
+
 export interface BondMeta {
   index: number; // 0-based
   beginAtomIndex: number; // 0-based
   endAtomIndex: number; // 0-based
+  /** Normalized bond order (1-4) used for rendering */
   order: 1 | 2 | 3 | 4;
+  /** Original bond order from molfile or inference (0 for coordination, 4 for aromatic, etc.) */
+  originalOrder: number;
+  /** @deprecated Use isAromatic instead */
   aromatic?: boolean;
+  /** True when originalOrder === 4 (aromatic bond) */
+  isAromatic?: boolean;
+  /** True when originalOrder === 0 (coordination/ionic bond) */
+  isCoordination?: boolean;
+  /** True when bond is a bridging bond (three-center bond) */
+  isBridge?: boolean;
+  /** Source of bond data */
+  source: BondSource;
+  /** Stereo type for wedge/hash bonds */
+  stereo?: 'up' | 'down' | 'wavy';
 }
 
 export interface LoadResult {
@@ -94,6 +111,14 @@ export interface LoadResult {
     };
     bondIndexToMesh?: Array<THREE.Object3D | null>;
     meshUuidToBondIndex?: Map<string, number>;
+    /** Instanced bonds metadata for picking/selection when instancedBonds: true */
+    instancedBonds?: {
+      mesh: THREE.InstancedMesh;
+      /** Maps instance index to bond index in bondTable */
+      instanceToBondIndex: Uint32Array;
+      /** Bond metadata keyed by bond index */
+      bondTable: BondMeta[];
+    };
   };
   chemistry: {
     atoms: Array<

@@ -451,7 +451,10 @@ export function loadSDF(text, options = {}) {
   const chemistryBonds = bonds.map((bond, i) => {
     const begin = (bond.beginAtomIdx ?? bond.a ?? 1) - 1;
     const end = (bond.endAtomIdx ?? bond.b ?? 1) - 1;
-    const isAromatic = bond.order === 4;
+    const originalOrder = bond.order ?? 1;
+    const isAromatic = originalOrder === 4;
+    const isCoordination = originalOrder === 0;
+    const isBridge = bond.isBridge === true;
     if (isAromatic) {
       aromaticAtomSet.add(begin);
       aromaticAtomSet.add(end);
@@ -466,8 +469,13 @@ export function loadSDF(text, options = {}) {
       index: i,
       beginAtomIndex: begin,
       endAtomIndex: end,
-      order: Math.max(1, Math.min(4, bond.order || 1)),
+      order: Math.max(1, Math.min(4, originalOrder || 1)),
+      originalOrder,
       aromatic: isAromatic || undefined,
+      isAromatic: isAromatic || undefined,
+      isCoordination: isCoordination || undefined,
+      isBridge: isBridge || undefined,
+      source: bond.source || 'molfile',
       stereo,
     };
   });
@@ -703,6 +711,7 @@ export function loadSDF(text, options = {}) {
   // Build bonds using LineSegments (lighter than cylinders)
   const bondIndexToMesh = new Array(bonds.length).fill(null);
   const meshUuidToBondIndex = new Map();
+  let instancedBondMesh = null; // declared outside bonds block for loadResult mapping
   const shouldCreateBonds =
     createBonds &&
     (!skipBondsOverAtomThreshold || atoms.length <= skipBondsOverAtomThreshold);
@@ -778,9 +787,11 @@ export function loadSDF(text, options = {}) {
     })();
 
     const instances = instancedBonds && useCylinders ? bonds.length : 0;
-    let instancedBondMesh = null;
     let instanceIndex = 0;
     let dummy;
+    // For instanced bonds: track instance-to-bond mapping and bond metadata table
+    const instanceToBondIndex = instances > 0 ? [] : null;
+    const bondTable = instances > 0 ? [] : null;
     if (instances > 0) {
       const baseGeo = cylGeo;
       const defaultCylMat2 = new THREE.MeshBasicMaterial({ color: 0xaaaaaa });
@@ -805,6 +816,22 @@ export function loadSDF(text, options = {}) {
       const isCoordination = originalOrder === 0;
       let order = originalOrder;
       if (order < 1 || order > 3) order = 1; // 0,4,8,9 → single
+
+      // Build bond metadata table for instanced bonds
+      if (bondTable) {
+        bondTable[bondIndex] = {
+          index: bondIndex,
+          beginAtomIndex: (bond.beginAtomIdx ?? 1) - 1,
+          endAtomIndex: (bond.endAtomIdx ?? 1) - 1,
+          order,
+          originalOrder,
+          aromatic: isAromatic || undefined,
+          isAromatic: isAromatic || undefined,
+          isCoordination: isCoordination || undefined,
+          isBridge: isBridge || undefined,
+          source: bond.source || 'molfile',
+        };
+      }
 
       const addBond = (offsetVec) => {
         const aOff = new THREE.Vector3().addVectors(a, offsetVec);
@@ -835,7 +862,12 @@ export function loadSDF(text, options = {}) {
             beginAtomIndex: (bond.beginAtomIdx ?? 1) - 1,
             endAtomIndex: (bond.endAtomIdx ?? 1) - 1,
             order,
+            originalOrder,
             aromatic: isAromatic || undefined,
+            isAromatic: isAromatic || undefined,
+            isCoordination: isCoordination || undefined,
+            isBridge: isBridge || undefined,
+            source: bond.source || 'molfile',
           };
           group.add(mesh);
           bondIndexToMesh[bondIndex] = mesh;
@@ -853,6 +885,8 @@ export function loadSDF(text, options = {}) {
           dummy.quaternion.setFromUnitVectors(up, dirVec.clone().normalize());
           dummy.updateMatrix();
           instancedBondMesh.setMatrixAt(instanceIndex, dummy.matrix);
+          // Track instance-to-bond mapping for metadata recovery
+          instanceToBondIndex.push(bondIndex);
           instanceIndex += 1;
         } else if (isAromatic || isBridge || isCoordination) {
           const geom = new THREE.BufferGeometry().setFromPoints([aOff, bOff]);
@@ -1012,6 +1046,10 @@ export function loadSDF(text, options = {}) {
     if (instancedBondMesh && instanceIndex > 0) {
       instancedBondMesh.count = instanceIndex;
       instancedBondMesh.instanceMatrix.needsUpdate = true;
+      // Attach instanced bond metadata for picking/selection
+      instancedBondMesh.userData.role = 'bondsInstanced';
+      instancedBondMesh.userData.instanceToBondIndex = new Uint32Array(instanceToBondIndex);
+      instancedBondMesh.userData.bondTable = bondTable;
       group.add(instancedBondMesh);
     }
     if (typeof onProgress === 'function') onProgress('bonds:done', 0.9);
@@ -1044,6 +1082,13 @@ export function loadSDF(text, options = {}) {
         : undefined,
       bondIndexToMesh,
       meshUuidToBondIndex,
+      instancedBonds: instancedBondMesh
+        ? {
+            mesh: instancedBondMesh,
+            instanceToBondIndex: instancedBondMesh?.userData?.instanceToBondIndex || new Uint32Array(),
+            bondTable: instancedBondMesh?.userData?.bondTable || [],
+          }
+        : undefined,
     },
     chemistry: {
       atoms: chemistryAtoms,
@@ -1485,7 +1530,7 @@ function inferCoordinationBonds(
       }
       const key = `${Math.min(a, b)}-${Math.max(a, b)}`;
       if (seen.has(key)) return;
-      bonds.push({ beginAtomIdx: a, endAtomIdx: b, order: 0 });
+      bonds.push({ beginAtomIdx: a, endAtomIdx: b, order: 0, source: 'inferredCoordination' });
       seen.add(key);
     });
   });
@@ -1544,6 +1589,7 @@ function addInferredBridgingBonds(atoms, bonds, hiddenSet) {
             endAtomIdx: b,
             order: 0,
             isBridge: true,
+            source: 'inferredBridge',
           });
           seen.add(key);
         }
