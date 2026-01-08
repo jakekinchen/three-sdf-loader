@@ -27,6 +27,12 @@ export interface LoaderOptions extends LoadSDFOptions {
   instancing?: boolean;
   createBonds?: boolean;
   includeHydrogens?: boolean;
+  /** In 2D layouts, push isolated charged ions apart to avoid disc overlap. */
+  separateIsolatedIons2D?: boolean;
+  /** Extra clearance as a fraction of (ri + rj). Default: 0.25 */
+  isolatedIons2DClearanceFrac?: number;
+  /** Iterations for clearance resolution. Default: 8 */
+  isolatedIons2DMaxIterations?: number;
   materialFactory?: (role: 'atom' | 'atomInstanced' | 'bondCylinder' | 'bondLine' | 'bondDashed', defaultMaterial: THREE.Material) => THREE.Material;
   palette?: 'default' | 'jmol' | 'material';
   style?: 'ballStick' | 'spaceFill' | 'licorice';

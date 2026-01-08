@@ -376,6 +376,121 @@ const DEFAULT_CUTOFF = 3.0;
 // Relative factor multiplier on closest ligand distance (adaptive for 2-D layouts)
 const DEFAULT_REL_FACTOR = 1.4;
 
+function applyIsolatedIonSeparation2D(atoms, bonds, options = {}) {
+  const {
+    enabled = false,
+    clearanceFrac = 0.25,
+    maxIterations = 8,
+    elementRadii = {},
+    atomGeoRadiusOverride,
+    style = 'ballStick',
+    hiddenSet,
+    coordScale = 1.0,
+  } = options;
+
+  if (!enabled) return;
+  if (!Array.isArray(atoms) || atoms.length < 2) return;
+
+  const scale = Number(coordScale);
+  if (!Number.isFinite(scale) || scale <= 0) return;
+
+  const degrees = new Array(atoms.length).fill(0);
+  (bonds || []).forEach((b) => {
+    const a = (b.beginAtomIdx ?? b.a ?? 1) - 1;
+    const c = (b.endAtomIdx ?? b.b ?? 1) - 1;
+    if (a >= 0 && a < degrees.length) degrees[a] += 1;
+    if (c >= 0 && c < degrees.length) degrees[c] += 1;
+  });
+
+  let styleRadiusScale = 1.0;
+  if (style === 'spaceFill') styleRadiusScale = 2.0;
+  else if (style === 'licorice') styleRadiusScale = 0.8;
+
+  const radii = atoms.map((atom) => {
+    const symUpper = (atom?.symbol || atom?.element || '').toUpperCase();
+    return (
+      (atomGeoRadiusOverride ??
+        elementRadii[symUpper] ??
+        DEFAULT_RADII[symUpper] ??
+        GENERIC_RADIUS) * styleRadiusScale
+    );
+  });
+
+  const isolated = [];
+  for (let i = 0; i < atoms.length; i += 1) {
+    if (degrees[i] !== 0) continue;
+    const atom = atoms[i];
+    if (!atom) continue;
+    const symUpper = (atom.symbol || atom.element || '').toUpperCase();
+    if (hiddenSet && hiddenSet.has(symUpper)) continue;
+    const q = Number(atom.charge ?? atom.formalCharge ?? 0);
+    if (!Number.isFinite(q) || q === 0) continue;
+    isolated.push(i);
+  }
+  if (isolated.length === 0) return;
+
+  const clearance = Math.max(0, Number(clearanceFrac) || 0);
+  const iters = Math.max(0, Math.min(64, Math.floor(Number(maxIterations) || 0)));
+  const GOLDEN_ANGLE = 2.399963229728653;
+
+  for (let iter = 0; iter < iters; iter += 1) {
+    let moved = false;
+    for (let k = 0; k < isolated.length; k += 1) {
+      const i = isolated[k];
+      const ai = atoms[i];
+      if (!ai) continue;
+      const xi = ai.x;
+      const yi = ai.y;
+      if (!Number.isFinite(xi) || !Number.isFinite(yi)) continue;
+
+      let nearestJ = -1;
+      let nearestDist = Infinity;
+      let dxBest = 0;
+      let dyBest = 0;
+
+      for (let j = 0; j < atoms.length; j += 1) {
+        if (j === i) continue;
+        const aj = atoms[j];
+        if (!aj) continue;
+        const xj = aj.x;
+        const yj = aj.y;
+        if (!Number.isFinite(xj) || !Number.isFinite(yj)) continue;
+        const dx = xi - xj;
+        const dy = yi - yj;
+        const d = Math.hypot(dx, dy);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearestJ = j;
+          dxBest = dx;
+          dyBest = dy;
+        }
+      }
+
+      if (nearestJ < 0 || !Number.isFinite(nearestDist)) continue;
+
+      const minDistRaw = ((radii[i] + radii[nearestJ]) * (1 + clearance)) / scale;
+      if (!(nearestDist < minDistRaw)) continue;
+
+      let ux;
+      let uy;
+      if (nearestDist > 1e-6) {
+        ux = dxBest / nearestDist;
+        uy = dyBest / nearestDist;
+      } else {
+        const angle = (i * GOLDEN_ANGLE) % (Math.PI * 2);
+        ux = Math.cos(angle);
+        uy = Math.sin(angle);
+      }
+
+      const push = minDistRaw - nearestDist;
+      ai.x = xi + ux * push;
+      ai.y = yi + uy * push;
+      moved = true;
+    }
+    if (!moved) break;
+  }
+}
+
 /**
  * Convert SDF (V2000) text into a THREE.Group containing spheres (atoms)
  * and line segments (bonds).
@@ -419,6 +534,10 @@ function loadSDF(text, options = {}) {
     headless = false,
     hideIsolatedAtoms = false,
     isolatedAtomCutoff = DEFAULT_CUTOFF,
+    // 2D salt layout: push isolated charged ions apart to avoid disc overlap
+    separateIsolatedIons2D = false,
+    isolatedIons2DClearanceFrac = 0.25,
+    isolatedIons2DMaxIterations = 8,
     // coordination inference controls
     coordinationMode, // 'none' | 'transitionOnly' | 'all' (default handled below)
     suppressOppositeChargeCoordination = true,
@@ -527,6 +646,25 @@ function loadSDF(text, options = {}) {
   if (shouldInferBridging) {
     addInferredBridgingBonds(atoms, bonds, hiddenSet);
   }
+
+  if (layoutMode === '2d') {
+    // Match the coordinate scaling used for atom positions (instanced path applies unitsScale).
+    let unitsScale = 1.0;
+    if (units === 'nm') unitsScale = 10.0;
+    else if (units === 'angstrom' || units === 'scene') unitsScale = 1.0;
+    const coordScale = instancing ? coordinateScale * unitsScale : coordinateScale;
+
+    applyIsolatedIonSeparation2D(atoms, bonds, {
+      enabled: separateIsolatedIons2D,
+      clearanceFrac: isolatedIons2DClearanceFrac,
+      maxIterations: isolatedIons2DMaxIterations,
+      elementRadii,
+      atomGeoRadiusOverride,
+      style,
+      hiddenSet,
+      coordScale,
+    });
+  }
   const group = new THREE.Group();
   group.name = 'molecule';
   group.userData.layoutMode = layoutMode;
@@ -555,6 +693,9 @@ function loadSDF(text, options = {}) {
     performance,
     instancing,
     createBonds,
+    separateIsolatedIons2D,
+    isolatedIons2DClearanceFrac,
+    isolatedIons2DMaxIterations,
   };
   // Objects are added directly to root group to preserve existing scene graph expectations
 
