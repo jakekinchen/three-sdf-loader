@@ -16,7 +16,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          # NOTE: Do not set registry-url here; setup-node will otherwise inject GITHUB_TOKEN into npm auth.
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing (OIDC) requires npm CLI v11.5.1+.
+      - run: npm i -g npm@11.5.1
+      - run: npm --version
 
       - run: npm ci
       - run: npm run lint
@@ -24,6 +28,4 @@ jobs:
       - run: npm run build
 
       - name: Publish with provenance
-        run: npm publish --provenance --access public
-        env:
-          NPM_CONFIG_PROVENANCE: true
+        run: npm publish --access public
