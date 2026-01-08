@@ -2,6 +2,10 @@
   "name": "three-sdf-loader",
   "version": "0.6.7",
   "description": "Lightweight loader to convert SDF (V2000) molecular files into THREE.Group for Three.js visualisation.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jakekinchen/three-sdf-loader"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
