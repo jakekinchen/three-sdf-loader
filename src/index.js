@@ -289,6 +289,7 @@ export function loadSDF(text, options = {}) {
     attachAtomData = true,
     attachProperties = true,
     renderMultipleBonds = true,
+    renderStereoBonds = true,
     multipleBondOffset = 0.1,
     useCylinders: legacyUseCylinders,
     bondRadius = 0.02,
@@ -429,6 +430,7 @@ export function loadSDF(text, options = {}) {
     attachAtomData,
     attachProperties,
     renderMultipleBonds,
+    renderStereoBonds,
     multipleBondOffset,
     useCylinders,
     bondRadius: bondRadiusFinal,
@@ -496,12 +498,22 @@ export function loadSDF(text, options = {}) {
 
   if (typeof onProgress === 'function') onProgress('atoms:start', 0.3);
 
-  // Find atoms involved in stereo bonds
+  // Find atoms involved in stereo bonds.
+  // IMPORTANT: Only track atoms that will actually be rendered (not hidden).
+  // Otherwise, if an endpoint (commonly H when showHydrogen=false) is hidden but we
+  // still preserve its position, we can end up rendering a wedge/hash bond to nowhere.
   const stereoAtomIndices = new Set();
+  const maybeAddStereoAtomIndex = (atomIndex) => {
+    if (typeof atomIndex !== 'number' || atomIndex < 0) return;
+    const symUpper = (atoms[atomIndex]?.symbol || atoms[atomIndex]?.element || '').toUpperCase();
+    if (!hiddenSet.has(symUpper)) stereoAtomIndices.add(atomIndex);
+  };
   bonds.forEach((bond) => {
     if (bond.stereo && bond.order === 1) {
-      stereoAtomIndices.add(bond.beginAtomIdx - 1);
-      stereoAtomIndices.add(bond.endAtomIdx - 1);
+      const begin = (bond.beginAtomIdx ?? bond.a ?? 1) - 1;
+      const end = (bond.endAtomIdx ?? bond.b ?? 1) - 1;
+      maybeAddStereoAtomIndex(begin);
+      maybeAddStereoAtomIndex(end);
     }
   });
 
@@ -817,20 +829,31 @@ export function loadSDF(text, options = {}) {
       let order = originalOrder;
       if (order < 1 || order > 3) order = 1; // 0,4,8,9 → single
 
+      // Precompute bond metadata (also used for stereo meshes + picking)
+      const beginAtomIndex = (bond.beginAtomIdx ?? bond.a ?? 1) - 1;
+      const endAtomIndex = (bond.endAtomIdx ?? bond.b ?? 1) - 1;
+      let stereo;
+      if (bond.stereo === 1) stereo = 'up';
+      else if (bond.stereo === 6) stereo = 'down';
+      else if (bond.stereo && originalOrder === 1) stereo = 'wavy';
+
+      const bondMeta = {
+        index: bondIndex,
+        beginAtomIndex,
+        endAtomIndex,
+        order,
+        originalOrder,
+        aromatic: isAromatic || undefined,
+        isAromatic: isAromatic || undefined,
+        isCoordination: isCoordination || undefined,
+        isBridge: isBridge || undefined,
+        source: bond.source || 'molfile',
+        stereo,
+      };
+
       // Build bond metadata table for instanced bonds
       if (bondTable) {
-        bondTable[bondIndex] = {
-          index: bondIndex,
-          beginAtomIndex: (bond.beginAtomIdx ?? 1) - 1,
-          endAtomIndex: (bond.endAtomIdx ?? 1) - 1,
-          order,
-          originalOrder,
-          aromatic: isAromatic || undefined,
-          isAromatic: isAromatic || undefined,
-          isCoordination: isCoordination || undefined,
-          isBridge: isBridge || undefined,
-          source: bond.source || 'molfile',
-        };
+        bondTable[bondIndex] = bondMeta;
       }
 
       const addBond = (offsetVec) => {
@@ -857,18 +880,7 @@ export function loadSDF(text, options = {}) {
           mesh.position.copy(mid);
           // Attach bond metadata to mesh for picking
           mesh.userData.role = 'bond';
-          mesh.userData.bond = {
-            index: bondIndex,
-            beginAtomIndex: (bond.beginAtomIdx ?? 1) - 1,
-            endAtomIndex: (bond.endAtomIdx ?? 1) - 1,
-            order,
-            originalOrder,
-            aromatic: isAromatic || undefined,
-            isAromatic: isAromatic || undefined,
-            isCoordination: isCoordination || undefined,
-            isBridge: isBridge || undefined,
-            source: bond.source || 'molfile',
-          };
+          mesh.userData.bond = bondMeta;
           group.add(mesh);
           bondIndexToMesh[bondIndex] = mesh;
           meshUuidToBondIndex.set(mesh.uuid, bondIndex);
@@ -912,11 +924,32 @@ export function loadSDF(text, options = {}) {
       };
 
       // ── stereochemistry (wedge / hash) ──
-      if (bond.stereo && order === 1) {
-        if (bond.stereo === 1) addSolidWedge(a, b, bondRadiusFinal, group, up);
-        else if (bond.stereo === 6)
-          addHashedWedge(a, b, bondRadiusFinal, group, up);
-        else addBond(new THREE.Vector3(0, 0, 0)); // wavy fallback
+      if (renderStereoBonds && bond.stereo && order === 1) {
+        if (bond.stereo === 1) {
+          const mesh = addSolidWedge(a, b, bondRadiusFinal, group, up);
+          if (mesh) {
+            mesh.userData.role = 'bond';
+            mesh.userData.bond = bondMeta;
+            bondIndexToMesh[bondIndex] = mesh;
+            meshUuidToBondIndex.set(mesh.uuid, bondIndex);
+          }
+        } else if (bond.stereo === 6) {
+          const wedgeGroup = addHashedWedge(a, b, bondRadiusFinal, group, up);
+          if (wedgeGroup) {
+            wedgeGroup.userData.role = 'bond';
+            wedgeGroup.userData.bond = bondMeta;
+            bondIndexToMesh[bondIndex] = wedgeGroup;
+            wedgeGroup.traverse((o) => {
+              const m = o;
+              if (!m?.isMesh) return;
+              m.userData.role = 'bond';
+              m.userData.bond = bondMeta;
+              meshUuidToBondIndex.set(m.uuid, bondIndex);
+            });
+          }
+        } else {
+          addBond(new THREE.Vector3(0, 0, 0)); // wavy fallback
+        }
         return; // skip normal line rendering
       }
 
@@ -1638,7 +1671,9 @@ function addSolidWedge(a, b, r, group, up) {
     }),
   );
   mesh.scale.set(r, 1, r); // adjust radius to r*2 (base cone radius is 2)
-  if (orientMeshAlong(mesh, a, b, up)) group.add(mesh);
+  if (!orientMeshAlong(mesh, a, b, up)) return null;
+  group.add(mesh);
+  return mesh;
 }
 
 /**
@@ -1651,6 +1686,7 @@ function addSolidWedge(a, b, r, group, up) {
  * @param {THREE.Vector3} up Up vector for orientation.
  */
 function addHashedWedge(a, b, r, group, up) {
+  const out = new THREE.Group();
   const steps = 5;
   const dir = new THREE.Vector3().subVectors(b, a).divideScalar(steps);
   const baseGeo = CYLINDER_GEO; // reuse shared geometry
@@ -1665,8 +1701,10 @@ function addHashedWedge(a, b, r, group, up) {
       new THREE.MeshBasicMaterial({ color: 0xaaaaaa }),
     );
     mesh.scale.set(r * (1 - i / steps), 1, r * (1 - i / steps));
-    if (orientMeshAlong(mesh, start, end, up)) group.add(mesh);
+    if (orientMeshAlong(mesh, start, end, up)) out.add(mesh);
   }
+  group.add(out);
+  return out;
 }
 
 /**

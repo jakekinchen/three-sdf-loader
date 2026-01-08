@@ -55,18 +55,21 @@ M  END
     expect(hasCone).toBe(true);
   });
 
-  it('should create multiple CylinderGeometries for hashed bonds', () => {
-    const hashSDF = `hash
-  Mrvl
+	  it('should create multiple CylinderGeometries for hashed bonds', () => {
+	    const hashSDF = `hash
+	  Mrvl
 
-  2  1  0  0  6  0            999 V2000
-    -0.5000    0.0000    0.0000 C   0  0  0  0  0  0
-     0.5000    0.0000    0.0000 C   0  0  0  0  0  0
-  1  2  1  6  0  0
-M  END
-`;
-    const group = loadSDF(hashSDF, { useCylinders: true });
-    const cylinderCount = group.children.filter(c => c.isMesh && c.geometry.type === 'CylinderGeometry').length;
-    expect(cylinderCount).toBeGreaterThan(1);
-  });
-}); 
+	  2  1  0  0  6  0            999 V2000
+	    -0.5000    0.0000    0.0000 C   0  0  0  0  0  0
+	     0.5000    0.0000    0.0000 C   0  0  0  0  0  0
+	  1  2  1  6  0  0
+	M  END
+	`;
+	    const group = loadSDF(hashSDF, { useCylinders: true });
+	    let cylinderCount = 0;
+	    group.traverse((o) => {
+	      if (o.isMesh && o.geometry?.type === 'CylinderGeometry') cylinderCount += 1;
+	    });
+	    expect(cylinderCount).toBeGreaterThan(1);
+	  });
+	}); 

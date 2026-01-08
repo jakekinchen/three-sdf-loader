@@ -8,6 +8,8 @@ export interface LoadSDFOptions {
   attachAtomData?: boolean;
   attachProperties?: boolean;
   renderMultipleBonds?: boolean;
+  /** When false, stereo wedge/hash bonds are rendered as normal bonds */
+  renderStereoBonds?: boolean;
   multipleBondOffset?: number;
   useCylinders?: boolean;
   bondRadius?: number;

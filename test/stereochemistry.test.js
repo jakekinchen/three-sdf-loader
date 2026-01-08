@@ -21,15 +21,55 @@ const HASH_SDF = `hash
 M  END`;
 
 describe('stereochemistry rendering', () => {
+  const collectMeshes = (root, predicate) => {
+    const out = [];
+    root.traverse((o) => {
+      if (o?.isMesh && predicate(o)) out.push(o);
+    });
+    return out;
+  };
+
   it('renders solid wedge bonds as cones', () => {
-    const g = loadSDF(WEDGE_SDF, { useCylinders: false });
-    const hasCone = g.children.some((c) => c.isMesh && c.geometry.type === 'ConeGeometry');
-    expect(hasCone).toBe(true);
+    const g = loadSDF(WEDGE_SDF, { useCylinders: false, showHydrogen: true });
+    const cones = collectMeshes(g, (m) => m.geometry?.type === 'ConeGeometry');
+    expect(cones.length).toBe(1);
+
+    const cone = cones[0];
+    expect(cone.userData?.role).toBe('bond');
+    expect(cone.userData?.bond?.beginAtomIndex).toBe(0);
+    expect(cone.userData?.bond?.endAtomIndex).toBe(1);
+    expect(cone.userData?.bond?.stereo).toBe('up');
+
+    const lr = g.userData?.loadResult;
+    expect(lr?.mappings?.bondIndexToMesh?.[0]).toBe(cone);
+    expect(lr?.mappings?.meshUuidToBondIndex?.get(cone.uuid)).toBe(0);
   });
 
-  it('renders hashed wedge bonds as cylinder segments', () => {
-    const g = loadSDF(HASH_SDF, { useCylinders: false });
-    const cylCount = g.children.filter((c) => c.isMesh && c.geometry.type === 'CylinderGeometry').length;
-    expect(cylCount).toBeGreaterThan(0);
+	  it('renders hashed wedge bonds as cylinder segments', () => {
+	    const g = loadSDF(HASH_SDF, { useCylinders: false, showHydrogen: true });
+	    const cylinders = collectMeshes(g, (m) => m.geometry?.type === 'CylinderGeometry');
+	    expect(cylinders.length).toBeGreaterThan(0);
+	    cylinders.forEach((c) => {
+	      expect(c.userData?.role).toBe('bond');
+	      expect(c.userData?.bond?.beginAtomIndex).toBe(0);
+	      expect(c.userData?.bond?.endAtomIndex).toBe(1);
+	      expect(c.userData?.bond?.stereo).toBe('down');
+	    });
+
+    const lr = g.userData?.loadResult;
+    const hashed = lr?.mappings?.bondIndexToMesh?.[0];
+    expect(hashed).toBeTruthy();
+	    expect(hashed?.isGroup).toBe(true);
+	    // Spot check: at least one hashed segment is in the uuid→bondIndex map
+	    expect(lr?.mappings?.meshUuidToBondIndex?.get(cylinders[0].uuid)).toBe(0);
+	  });
+
+  it('can suppress stereo wedge/hash geometry', () => {
+    const g = loadSDF(WEDGE_SDF, { useCylinders: false, showHydrogen: true, renderStereoBonds: false });
+    const cones = collectMeshes(g, (m) => m.geometry?.type === 'ConeGeometry');
+    expect(cones.length).toBe(0);
+    // Bond should still render (as a normal line segment)
+    const hasLines = g.children.some((c) => c.isLineSegments);
+    expect(hasLines).toBe(true);
   });
 });
