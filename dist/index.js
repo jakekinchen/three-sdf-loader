@@ -418,14 +418,17 @@ function applyIsolatedIonSeparation2D(atoms, bonds, options = {}) {
 
   const isolated = [];
   for (let i = 0; i < atoms.length; i += 1) {
-    if (degrees[i] !== 0) continue;
-    const atom = atoms[i];
-    if (!atom) continue;
-    const symUpper = (atom.symbol || atom.element || '').toUpperCase();
-    if (hiddenSet && hiddenSet.has(symUpper)) continue;
-    const q = Number(atom.charge ?? atom.formalCharge ?? 0);
-    if (!Number.isFinite(q) || q === 0) continue;
-    isolated.push(i);
+    if (degrees[i] === 0) {
+      const atom = atoms[i];
+      if (atom) {
+        const symUpper = (atom.symbol || atom.element || '').toUpperCase();
+        const isHidden = hiddenSet && hiddenSet.has(symUpper);
+        if (!isHidden) {
+          const q = Number(atom.charge ?? atom.formalCharge ?? 0);
+          if (Number.isFinite(q) && q !== 0) isolated.push(i);
+        }
+      }
+    }
   }
   if (isolated.length === 0) return;
 
@@ -438,54 +441,58 @@ function applyIsolatedIonSeparation2D(atoms, bonds, options = {}) {
     for (let k = 0; k < isolated.length; k += 1) {
       const i = isolated[k];
       const ai = atoms[i];
-      if (!ai) continue;
-      const xi = ai.x;
-      const yi = ai.y;
-      if (!Number.isFinite(xi) || !Number.isFinite(yi)) continue;
+      if (ai) {
+        const xi = ai.x;
+        const yi = ai.y;
+        if (Number.isFinite(xi) && Number.isFinite(yi)) {
+          let nearestJ = -1;
+          let nearestDist = Infinity;
+          let dxBest = 0;
+          let dyBest = 0;
 
-      let nearestJ = -1;
-      let nearestDist = Infinity;
-      let dxBest = 0;
-      let dyBest = 0;
+          for (let j = 0; j < atoms.length; j += 1) {
+            if (j !== i) {
+              const aj = atoms[j];
+              if (aj) {
+                const xj = aj.x;
+                const yj = aj.y;
+                if (Number.isFinite(xj) && Number.isFinite(yj)) {
+                  const dx = xi - xj;
+                  const dy = yi - yj;
+                  const d = Math.hypot(dx, dy);
+                  if (d < nearestDist) {
+                    nearestDist = d;
+                    nearestJ = j;
+                    dxBest = dx;
+                    dyBest = dy;
+                  }
+                }
+              }
+            }
+          }
 
-      for (let j = 0; j < atoms.length; j += 1) {
-        if (j === i) continue;
-        const aj = atoms[j];
-        if (!aj) continue;
-        const xj = aj.x;
-        const yj = aj.y;
-        if (!Number.isFinite(xj) || !Number.isFinite(yj)) continue;
-        const dx = xi - xj;
-        const dy = yi - yj;
-        const d = Math.hypot(dx, dy);
-        if (d < nearestDist) {
-          nearestDist = d;
-          nearestJ = j;
-          dxBest = dx;
-          dyBest = dy;
+          if (nearestJ >= 0 && Number.isFinite(nearestDist)) {
+            const minDistRaw = ((radii[i] + radii[nearestJ]) * (1 + clearance)) / scale;
+            if (nearestDist < minDistRaw) {
+              let ux;
+              let uy;
+              if (nearestDist > 1e-6) {
+                ux = dxBest / nearestDist;
+                uy = dyBest / nearestDist;
+              } else {
+                const angle = (i * GOLDEN_ANGLE) % (Math.PI * 2);
+                ux = Math.cos(angle);
+                uy = Math.sin(angle);
+              }
+
+              const push = minDistRaw - nearestDist;
+              ai.x = xi + ux * push;
+              ai.y = yi + uy * push;
+              moved = true;
+            }
+          }
         }
       }
-
-      if (nearestJ < 0 || !Number.isFinite(nearestDist)) continue;
-
-      const minDistRaw = ((radii[i] + radii[nearestJ]) * (1 + clearance)) / scale;
-      if (!(nearestDist < minDistRaw)) continue;
-
-      let ux;
-      let uy;
-      if (nearestDist > 1e-6) {
-        ux = dxBest / nearestDist;
-        uy = dyBest / nearestDist;
-      } else {
-        const angle = (i * GOLDEN_ANGLE) % (Math.PI * 2);
-        ux = Math.cos(angle);
-        uy = Math.sin(angle);
-      }
-
-      const push = minDistRaw - nearestDist;
-      ai.x = xi + ux * push;
-      ai.y = yi + uy * push;
-      moved = true;
     }
     if (!moved) break;
   }
