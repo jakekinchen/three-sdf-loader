@@ -54,6 +54,7 @@ scene.add(molecule);
 | `attachProperties`    | `boolean`                        | `true`  | Copy molecule-level `properties` onto `group.userData`.        |
 | `layout`              | `'auto' \| '2d' \| '3d'`         | `auto`  | Force 2‑D or 3‑D handling; `'auto'` infers from Z‑coordinates. |
 | `renderMultipleBonds` | `boolean`                        | `true`  | Render double / triple bonds as parallel lines.                |
+| `renderStereoBonds`   | `boolean`                        | `false` | When `true`, render wedge/hash geometry for stereo single bonds; when `false`, render normal bonds. |
 | `multipleBondOffset`  | `number`                         | `0.1`   | Separation between parallel lines (scene units).               |
 | `addThreeCenterBonds` | `boolean`                        | `true`  | Infer three-center bonds (e.g., B–H–B bridges in diborane).    |
 | `coordinationMode`    | `'none'|'transitionOnly'|'all'`  | `transitionOnly` | Scope of coordination bond inference. `'all'` mirrors older behavior. |

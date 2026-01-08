@@ -47,13 +47,13 @@ M  END
   2  1  0  0  1  0            999 V2000
     -0.5000    0.0000    0.0000 C   0  0  0  0  0  0
      0.5000    0.0000    0.0000 C   0  0  0  0  0  0
-  1  2  1  1  0  0
-M  END
-`;
-    const group = loadSDF(wedgeSDF, { useCylinders: true });
-    const hasCone = group.children.some(c => c.isMesh && c.geometry.type === 'ConeGeometry');
-    expect(hasCone).toBe(true);
-  });
+	  1  2  1  1  0  0
+	M  END
+	`;
+	    const group = loadSDF(wedgeSDF, { useCylinders: true, renderStereoBonds: true });
+	    const hasCone = group.children.some(c => c.isMesh && c.geometry.type === 'ConeGeometry');
+	    expect(hasCone).toBe(true);
+	  });
 
 	  it('should create multiple CylinderGeometries for hashed bonds', () => {
 	    const hashSDF = `hash
@@ -62,14 +62,14 @@ M  END
 	  2  1  0  0  6  0            999 V2000
 	    -0.5000    0.0000    0.0000 C   0  0  0  0  0  0
 	     0.5000    0.0000    0.0000 C   0  0  0  0  0  0
-	  1  2  1  6  0  0
-	M  END
-	`;
-	    const group = loadSDF(hashSDF, { useCylinders: true });
-	    let cylinderCount = 0;
-	    group.traverse((o) => {
-	      if (o.isMesh && o.geometry?.type === 'CylinderGeometry') cylinderCount += 1;
-	    });
+		  1  2  1  6  0  0
+		M  END
+		`;
+		    const group = loadSDF(hashSDF, { useCylinders: true, renderStereoBonds: true });
+		    let cylinderCount = 0;
+		    group.traverse((o) => {
+		      if (o.isMesh && o.geometry?.type === 'CylinderGeometry') cylinderCount += 1;
+		    });
 	    expect(cylinderCount).toBeGreaterThan(1);
 	  });
 	}); 

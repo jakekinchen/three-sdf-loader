@@ -16,6 +16,24 @@ M  END
 999999
 $$$$`;
 
+const ATOM_LINE_CHARGES_ONLY = `atom-line-charges-only
+  Demo
+
+  2  0  0  0  0  0              0 V2000
+    0.0000    0.0000    0.0000 Na  0  3  0  0  0  0  0  0  0  0  0  0
+    2.5000    0.0000    0.0000 Cl  0  5  0  0  0  0  0  0  0  0  0  0
+M  END
+$$$$`;
+
+const ATOM_LINE_CHARGE_OVERRIDDEN_BY_MCHG = `atom-line-charge-overridden
+  Demo
+
+  1  0  0  0  0  0              0 V2000
+    0.0000    0.0000    0.0000 Na  0  3  0  0  0  0  0  0  0  0  0  0
+M  CHG  1   1   2
+M  END
+$$$$`;
+
 describe('parseSDF', () => {
   it('returns atoms, bonds and properties', () => {
     const mol = parseSDF(SAMPLE_SDF);
@@ -23,6 +41,23 @@ describe('parseSDF', () => {
     expect(Array.isArray(mol.atoms)).toBe(true);
     expect(mol).toHaveProperty('bonds');
     expect(Array.isArray(mol.bonds)).toBe(true);
+  });
+
+  it('parses V2000 atom-line charge codes', () => {
+    const mol = parseSDF(ATOM_LINE_CHARGES_ONLY);
+    expect(mol.atoms).toHaveLength(2);
+    expect(mol.atoms[0].charge).toBe(1);
+    expect(mol.atoms[1].charge).toBe(-1);
+
+    const result = loadSDFResult(ATOM_LINE_CHARGES_ONLY, { headless: true });
+    expect(result.chemistry.atoms[0].formalCharge).toBe(1);
+    expect(result.chemistry.atoms[1].formalCharge).toBe(-1);
+  });
+
+  it('lets M  CHG override atom-line charge codes', () => {
+    const mol = parseSDF(ATOM_LINE_CHARGE_OVERRIDDEN_BY_MCHG);
+    expect(mol.atoms).toHaveLength(1);
+    expect(mol.atoms[0].charge).toBe(2);
   });
 
   it('parses V2000 files with leading blank lines and CRLF newlines', () => {

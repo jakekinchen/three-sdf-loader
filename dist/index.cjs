@@ -48,6 +48,115 @@ function canonicalizeV2000(text) {
   return canonical;
 }
 
+function decodeV2000ChargeCode(code) {
+  // MDL V2000 atom-line charge codes:
+  // 1=+3, 2=+2, 3=+1, 5=-1, 6=-2, 7=-3 (0 or others => 0)
+  switch (code) {
+    case 1:
+      return 3;
+    case 2:
+      return 2;
+    case 3:
+      return 1;
+    case 5:
+      return -1;
+    case 6:
+      return -2;
+    case 7:
+      return -3;
+    default:
+      return 0;
+  }
+}
+
+function applyV2000ChargesFromText(text, atomsInput) {
+  if (typeof text !== 'string') return;
+  if (!Array.isArray(atomsInput) || atomsInput.length === 0) return;
+  if (/^\s*M\s+V30\b/m.test(text)) return;
+
+  const atoms = atomsInput;
+  const lines = text.replace(/\r/g, '').split('\n');
+  const countsLineIndex = lines.findIndex((ln) => /^\s*-?\d+\s+-?\d+/.test(ln));
+  if (countsLineIndex < 0) return;
+
+  const rawCounts = lines[countsLineIndex] || '';
+  const countsLine = rawCounts.trimStart();
+  const atomsFW = Number(countsLine.slice(0, 3));
+  const bondsFW = Number(countsLine.slice(3, 6));
+  let natoms = atomsFW;
+  let nbonds = bondsFW;
+  const needsFallback =
+    !Number.isFinite(natoms) || !Number.isFinite(nbonds) || natoms <= 0 || nbonds < 0;
+
+  if (needsFallback) {
+    const parts = countsLine.slice(0, 39).trim().split(/\s+/);
+    if (/^\d{6}$/.test(parts[0])) {
+      natoms = Number(parts[0].slice(0, 3));
+      nbonds = Number(parts[0].slice(3));
+    } else {
+      natoms = Number(parts[0]);
+      nbonds = Number(parts[1]);
+    }
+  }
+  if (!Number.isFinite(natoms) || !Number.isFinite(nbonds)) return;
+
+  // 1) Atom-line charge codes (apply only if non-zero).
+  const atomsToScan = Math.min(natoms, atoms.length);
+  for (let i = 0; i < atomsToScan; i += 1) {
+    const l = lines[countsLineIndex + 1 + i] || '';
+    let code;
+    const fixed = l.slice(36, 39).trim();
+    if (fixed) {
+      const n = Number(fixed);
+      if (Number.isFinite(n)) code = n;
+    }
+    if (code == null) {
+      const parts = l.trim().split(/\s+/);
+      if (parts.length >= 6) {
+        const n = Number(parts[5]);
+        if (Number.isFinite(n)) code = n;
+      }
+    }
+    if (Number.isFinite(code)) {
+      const charge = decodeV2000ChargeCode(code);
+      if (charge !== 0) atoms[i].charge = charge;
+    }
+  }
+
+  // 2) M  CHG lines override atom-line codes.
+  const bondBlockEndIndex = countsLineIndex + 1 + natoms + nbonds;
+  const mEndIndex = lines.findIndex(
+    (ln, idx) => idx >= bondBlockEndIndex && ln.startsWith('M  END'),
+  );
+  const applyMChgLine = (ln) => {
+    const parts = ln.trim().split(/\s+/);
+    const n = Number(parts[2] || 0);
+    if (!Number.isFinite(n) || n <= 0) return;
+    for (let k = 0; k < n; k += 1) {
+      const idx = Number(parts[3 + 2 * k]);
+      const chg = Number(parts[4 + 2 * k]);
+      if (Number.isFinite(idx) && Number.isFinite(chg) && atoms[idx - 1]) {
+        atoms[idx - 1].charge = chg;
+      }
+    }
+  };
+
+  // Typical placement: between bond block and M  END
+  const mEndStop = mEndIndex >= 0 ? mEndIndex : lines.length;
+  for (let i = bondBlockEndIndex; i < mEndStop; i += 1) {
+    const ln = lines[i] || '';
+    if (ln.startsWith('M  CHG')) applyMChgLine(ln);
+  }
+
+  // Fallback: some non-standard files may place M  CHG after M  END
+  if (mEndIndex >= 0) {
+    for (let i = mEndIndex + 1; i < lines.length; i += 1) {
+      const ln = lines[i] || '';
+      if (ln.startsWith('M  CHG')) applyMChgLine(ln);
+    }
+  }
+}
+
 /** return memoised sphere geometry */
 function getSphereGeometry(r, segments = 16) {
   const key = `${r}|${segments}`;
@@ -311,7 +420,7 @@ function loadSDF(text, options = {}) {
     attachAtomData = true,
     attachProperties = true,
     renderMultipleBonds = true,
-    renderStereoBonds = true,
+    renderStereoBonds = false,
     multipleBondOffset = 0.1,
     useCylinders: legacyUseCylinders,
     bondRadius = 0.02,
@@ -1289,12 +1398,18 @@ function parseSDF(text, options = {}) {
     const result = sdfParser.parse(canonical, options);
     if (Array.isArray(result)) {
       const withAtoms = result.find((entry) => entry?.atoms?.length);
-      if (withAtoms) return withAtoms;
+      if (withAtoms) {
+        applyV2000ChargesFromText(canonical, withAtoms.atoms);
+        return withAtoms;
+      }
     } else if (result?.atoms?.length) {
+      applyV2000ChargesFromText(canonical, result.atoms);
       return result;
     }
   }
-  return simpleParse(canonical);
+  const parsed = simpleParse(canonical);
+  applyV2000ChargesFromText(canonical, parsed.atoms);
+  return parsed;
 }
 
 /**
@@ -1379,17 +1494,7 @@ function simpleParse(text) {
   if (mEndIndex < 0) mEndIndex = countsLineIndex + 1 + natoms + nbonds;
   for (let i = mEndIndex + 1; i < lines.length; i += 1) {
     const ln = lines[i];
-    // V2000 charge lines: M  CHG  n  idx1  chg1  idx2  chg2 ...
-    if (ln.startsWith('M  CHG')) {
-      const parts = ln.trim().split(/\s+/);
-      const n = Number(parts[2] || 0);
-      for (let k = 0; k < n; k += 1) {
-        const idx = Number(parts[3 + 2 * k]);
-        const chg = Number(parts[4 + 2 * k]);
-        if (Number.isFinite(idx) && atoms[idx - 1]) atoms[idx - 1].charge = chg;
-      }
-      // skip normal property parsing for this line
-    } else if (ln.startsWith('>')) {
+    if (ln.startsWith('>')) {
       const match = ln.match(/<([^>]+)>/);
       if (match) {
         const key = match[1];

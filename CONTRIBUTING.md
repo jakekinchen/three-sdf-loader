@@ -28,8 +28,9 @@ npm run build            # Creates dist/index.js, dist/index.cjs, dist/index.d.t
 
 - You must have npm publish access to `three-sdf-loader`
 - Trusted Publishing is configured via GitHub Actions (no token needed for CI)
+- `package.json` includes `"repository.url": "https://github.com/jakekinchen/three-sdf-loader"` (required for provenance verification)
 
-### Manual Release (recommended)
+### Release via CI (recommended)
 
 1. **Bump version and commit:**
    ```bash
@@ -45,15 +46,13 @@ npm run build            # Creates dist/index.js, dist/index.cjs, dist/index.d.t
    git push --follow-tags
    ```
 
-3. **Publish to npm:**
-   ```bash
-   npm login           # If not already logged in
-   npm publish
-   ```
+3. **Let GitHub Actions publish:**
+   - The `.github/workflows/publish.yml` workflow runs on `v*` tags and publishes via npm Trusted Publishing (OIDC).
+   - Verify the release on npm (example): `npm view three-sdf-loader version`
 
 ### CI/CD (GitHub Actions)
 
-The repo has a publish workflow at `.github/workflows/publish.yml` configured for npm Trusted Publishing. However, as of Jan 2026, manual publishing is more reliable.
+The repo has a publish workflow at `.github/workflows/publish.yml` configured for npm Trusted Publishing.
 
 **Trusted Publishing setup (if needed):**
 1. Go to npmjs.com → Package Settings → Trusted Publishing
@@ -62,6 +61,23 @@ The repo has a publish workflow at `.github/workflows/publish.yml` configured fo
    - Repository: `three-sdf-loader`
    - Workflow: `publish.yml`
    - Environment: *(empty)*
+
+**Notes:**
+- npm Trusted Publishing requires npm CLI `>= 11.5.1` (the publish workflow installs a compatible npm version).
+- Avoid using long-lived npm tokens in CI; Trusted Publishing should be sufficient.
+
+### Manual Publish (fallback)
+
+Only use manual publishing if CI publishing is unavailable.
+
+```bash
+npm run lint
+npm run test:coverage
+npm run size
+npm run build
+npm login
+npm publish --access public
+```
 
 ### CI Checks
 
