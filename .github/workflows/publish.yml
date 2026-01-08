@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: 'https://registry.npmjs.org'
+          # NOTE: Do not set registry-url here; setup-node will otherwise inject GITHUB_TOKEN into npm auth.
 
       - run: npm ci
       - run: npm run lint
