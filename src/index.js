@@ -26,6 +26,97 @@ function canonicalizeV2000(text) {
   return canonical;
 }
 
+function parseV2000BondLine(line, atomCount) {
+  const trimmed = line.trim();
+  const parts = trimmed ? trimmed.split(/\s+/) : [];
+
+  // Prefer whitespace parsing when it produces in-range indices (supports non-fixed-width files).
+  if (parts.length >= 3) {
+    const a = Number(parts[0]);
+    const b = Number(parts[1]);
+    const order = Number(parts[2]) || 1;
+    const stereo = Number(parts[3] ?? 0) || 0;
+
+    const looksValid =
+      Number.isFinite(a) &&
+      Number.isFinite(b) &&
+      a >= 1 &&
+      b >= 1 &&
+      a <= atomCount &&
+      b <= atomCount;
+
+    if (looksValid) return { beginAtomIdx: a, endAtomIdx: b, order, stereo };
+  }
+
+  // Fixed-width V2000 fallback (handles concatenated indices like " 54100").
+  const aFW = Number(line.slice(0, 3).trim()) || 0;
+  const bFW = Number(line.slice(3, 6).trim()) || 0;
+  const orderFW = Number(line.slice(6, 9).trim()) || 1;
+  const stereoFW = Number(line.slice(9, 12).trim()) || 0;
+
+  return { beginAtomIdx: aFW, endAtomIdx: bFW, order: orderFW, stereo: stereoFW };
+}
+
+function repairV2000BondsIfNeeded(text, parsed) {
+  if (!text || !parsed || !Array.isArray(parsed.atoms) || parsed.atoms.length === 0) return;
+  if (!Array.isArray(parsed.bonds)) return;
+  if (/^\s*M\s+V30\b/m.test(text)) return; // V3000 handled elsewhere
+
+  const lines = text.replace(/\r/g, '').split('\n');
+  const countsLineIndex = lines.findIndex((ln) => /^\s*-?\d+\s+-?\d+/.test(ln));
+  if (countsLineIndex < 0) return;
+
+  // Parse counts line (fixed-width first, then whitespace fallback).
+  const rawCounts = lines[countsLineIndex] || '';
+  const countsLine = rawCounts.trimStart();
+  const atomsFW = Number(countsLine.slice(0, 3));
+  const bondsFW = Number(countsLine.slice(3, 6));
+  let natoms = atomsFW;
+  let nbonds = bondsFW;
+  const needsFallback =
+    !Number.isFinite(natoms) || !Number.isFinite(nbonds) || natoms <= 0 || nbonds < 0;
+
+  if (needsFallback) {
+    const parts = countsLine.slice(0, 39).trim().split(/\s+/);
+    if (/^\d{6}$/.test(parts[0])) {
+      natoms = Number(parts[0].slice(0, 3));
+      nbonds = Number(parts[0].slice(3));
+    } else {
+      natoms = Number(parts[0]);
+      nbonds = Number(parts[1]);
+    }
+  }
+  if (!Number.isFinite(natoms) || !Number.isFinite(nbonds)) return;
+
+  const atomCount = Math.max(parsed.atoms.length, natoms);
+  const hasOutOfRangeBond = parsed.bonds.some((bond) => {
+    const a = bond?.beginAtomIdx ?? bond?.a;
+    const b = bond?.endAtomIdx ?? bond?.b;
+    return (
+      !Number.isFinite(a) ||
+      !Number.isFinite(b) ||
+      a < 1 ||
+      b < 1 ||
+      a > atomCount ||
+      b > atomCount
+    );
+  });
+
+  const hasMismatchedBondCount =
+    Number.isFinite(nbonds) && nbonds >= 0 && parsed.bonds.length !== nbonds;
+
+  if (!hasOutOfRangeBond && !hasMismatchedBondCount) return;
+
+  const bondStart = countsLineIndex + 1 + natoms;
+  const repaired = [];
+  for (let i = 0; i < nbonds; i += 1) {
+    const l = lines[bondStart + i] || '';
+    repaired.push(parseV2000BondLine(l, atomCount));
+  }
+
+  Object.assign(parsed, { bonds: repaired });
+}
+
 function decodeV2000ChargeCode(code) {
   // MDL V2000 atom-line charge codes:
   // 1=+3, 2=+2, 3=+1, 5=-1, 6=-2, 7=-3 (0 or others => 0)
@@ -1531,10 +1622,12 @@ export function parseSDF(text, options = {}) {
     if (Array.isArray(result)) {
       const withAtoms = result.find((entry) => entry?.atoms?.length);
       if (withAtoms) {
+        repairV2000BondsIfNeeded(canonical, withAtoms);
         applyV2000ChargesFromText(canonical, withAtoms.atoms);
         return withAtoms;
       }
     } else if (result?.atoms?.length) {
+      repairV2000BondsIfNeeded(canonical, result);
       applyV2000ChargesFromText(canonical, result.atoms);
       return result;
     }
@@ -1610,13 +1703,7 @@ function simpleParse(text) {
   const bonds = [];
   for (let i = 0; i < nbonds; i += 1) {
     const l = lines[countsLineIndex + 1 + natoms + i] || '';
-    const [a, b, orderStr, stereoStr = '0'] = l.trim().split(/\s+/);
-    bonds.push({
-      beginAtomIdx: Number(a),
-      endAtomIdx: Number(b),
-      order: Number(orderStr) || 1,
-      stereo: Number(stereoStr),
-    });
+    bonds.push(parseV2000BondLine(l, natoms));
   }
 
   const props = {};
